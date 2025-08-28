@@ -234,9 +234,12 @@ class TLOption {
      * Injecte le code HTML de l'option dans le menu et attache les événements.
      */
     injecter() {
-        let option = `<li><span class="float-start">TopicLive - ${this.nom}</span>`;
-        option += `<input type="checkbox" class="input-on-off" id="${this.id}" ${this.actif ? 'checked' : ''}>`;
-        option += `<label for="${this.id}" class="btn-on-off"></label></li>`;
+        let option = `
+        <li>
+            <span class="float-start">TopicLive - ${this.nom}</span>
+            <input type="checkbox" class="input-on-off" id="${this.id}" ${this.actif ? 'checked' : ''}>
+            <label for="${this.id}" class="btn-on-off"></label>
+        </li>`;
         $('.menu-user-forum').append(option);
         this.bouton = $(`#${this.id}`);
         this.bouton.change(() => {
