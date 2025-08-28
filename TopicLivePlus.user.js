@@ -88,7 +88,7 @@ class Page {
     scan() {
         TL.ajaxTs = this.trouver('#ajax_timestamp_liste_messages').val();
         TL.ajaxHash = this.trouver('#ajax_hash_liste_messages').val();
-        $('.nb-connect-fofo').text(this.trouver('.nb-connect-fofo').text());
+        $('.nb-connect-fofo .icon-people').text(this.trouver('.nb-connect-fofo  .icon-people').text());
 
         const isTextareaFocused = $(TL.formu.obtenirMessage()).is(':focus');
         let distanceFromBottom;
