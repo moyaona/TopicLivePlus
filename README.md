@@ -38,6 +38,6 @@ Un compteur de messages s'affichera en favicon, ainsi qu'un bouton sur la page p
 - Menu contextuel dédié.
 
 ## Crédits
-- Kiwec : Base du script / https://github.com/kiwec
+- Kiwec : Base du script / https://github.com/kiwec (script original disponible ici : https://github.com/moyaona/TopicLive_Enhanced )
 - Lantea (github) / Atlantis (jvscript) : Aide et conseils; Fix des citations / https://github.com/Lantea-Git / https://jvscript.fr/search/Atlantis
 - Moyaona : Refondation du script
