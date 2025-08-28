@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name          TopicLive+
-// @description   Charge les nouveaux messages d'un topic JVC en direct, avec un défilement de type chat.
-// @author        kiwec, moyaona, lantea
+// @description   Charge les nouveaux messages d'un topic JVC en direct.
+// @author        kiwec, moyaona, lantea/atlantis
 // @match         https://www.jeuxvideo.com/*
 // @match         https://m.jeuxvideo.com/*
-// @downloadURL https://github.com/moyaona/TopicLive_Enhanced/raw/refs/heads/main/TopicLive_Discord.user.js
-// @updateURL https://github.com/moyaona/TopicLive_Enhanced/raw/refs/heads/main/TopicLive_Discord.user.js
+// @downloadURL   https://github.com/moyaona/TopicLivePlus/raw/refs/heads/main/TopicLivePlus.user.js
+// @updateURL     https://github.com/moyaona/TopicLivePlus/raw/refs/heads/main/TopicLivePlus.user.js
 // @run-at        document-end
 // @require       https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js
 // @icon          https://image.noelshack.com/fichiers/2025/30/3/1753227153-logo-topiclive-enhanced.png
