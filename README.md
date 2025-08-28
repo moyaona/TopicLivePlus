@@ -39,5 +39,5 @@ Un compteur de messages s'affichera en favicon, ainsi qu'un bouton sur la page p
 
 ## Crédits
 - Kiwec : Base du script / https://github.com/kiwec
-- Lantea (github) / Atlantis (jvscript) : Aide et conseils; Fix des citations / https://github.com/Lantea-Git
+- Lantea (github) / Atlantis (jvscript) : Aide et conseils; Fix des citations / https://github.com/Lantea-Git / https://jvscript.fr/search/Atlantis
 - Moyaona : Refondation du script
