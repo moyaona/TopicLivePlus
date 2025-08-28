@@ -10,7 +10,7 @@ Un compteur de messages s'affichera en favicon, ainsi qu'un bouton sur la page p
 
 - Installez ViolentMonkey ou Tampermonkey.
 
-- Installez TopicLive+ en [cliquant ici](https://github.com/moyaona/TopicLive_Enhanced/raw/main/TopicLive_Enhanced.user.js) (Vous obtiendrez les dernières màjs automatiquement)
+- Installez TopicLive+ en [cliquant ici](https://github.com/moyaona/TopicLivePlus/raw/refs/heads/main/TopicLivePlus.user.js) (Vous obtiendrez les dernières màjs automatiquement)
 
 ## Améliorations par rapport au script original
 
