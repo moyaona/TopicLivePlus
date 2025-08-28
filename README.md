@@ -33,6 +33,7 @@ Un compteur de messages s'affichera en favicon, ainsi qu'un bouton sur la page p
 - Permettre le fonctionnement du script sur toutes les pages d'un topic et pas uniquement la dernière.
 - Faire fonctionner le script pour l'actualisation des MP.
 - Intégrer des boutons de navigation mobile.
+- Intégrer un compteur de connectés flottant.
 - Menu contextuel dédié.
 
 ## Crédits
