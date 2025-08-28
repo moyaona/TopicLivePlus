@@ -22,7 +22,7 @@ Un compteur de messages s'affichera en favicon, ainsi qu'un bouton sur la page p
 - Fix des citations des nouveaux messages chargés automatiquement.
 
   ### Nouveautés mineures
-- Fix du favicon jvc qui ne s'affichait pas de suite en chargeant un topic.
+- Fix de la favicon jvc qui ne s'affichait pas de suite en chargeant un topic.
 - Modification esthétique du compteur de nouveaux messages en favicon.
 - Exclusion du script des MP.
 - Fix de l'audio et remplacement par une notification plus douce.
