@@ -9,7 +9,7 @@
 // @run-at        document-end
 // @require       https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js
 // @icon          https://image.noelshack.com/fichiers/2025/35/4/1756403430-image.png
-// @version       7.1
+// @version       7.2
 // @grant         none
 // @noframes
 // ==/UserScript==
@@ -220,9 +220,9 @@ class Page {
  * Représente une option de configuration du script dans le menu utilisateur de JVC.
  */
 class TLOption {
-    constructor(nom, id) {
+    constructor(nom, id, defaultValue = 'true') { // Modification pour accepter une valeur par défaut
         if (localStorage.getItem(id) === null) {
-            localStorage.setItem(id, 'true');
+            localStorage.setItem(id, defaultValue); // Utilisation de la valeur par défaut
         }
         this.actif = localStorage[id] == 'true';
         this.nom = nom;
@@ -234,7 +234,7 @@ class TLOption {
      * Injecte le code HTML de l'option dans le menu et attache les événements.
      */
     injecter() {
-        let option = `<li>
+       let option = `<li>
             <span class="float-start">TopicLive - ${this.nom}</span>
             <input type="checkbox" class="input-on-off" id="${this.id}" ${this.actif ? 'checked' : ''}>
             <label for="${this.id}" class="btn-on-off"></label>
@@ -375,20 +375,21 @@ class Message {
     update(nvMessage) {
         if (this.edition == nvMessage.edition) return;
         this.edition = nvMessage.edition;
+
+        // On remplace le contenu du message.
         this.trouver(TL.class_contenu).html(nvMessage.trouver(TL.class_contenu).html());
+
+        // On appelle la fonction qui transforme les spans JvCare en liens cliquables.
+        TL.page.Transformation();
+
         dispatchEvent(new CustomEvent('topiclive:edition', {
             'detail': {
                 id: this.id_message,
                 jvcake: TL.jvCake
             }
         }));
-        const defColor = this.$message.css('backgroundColor');
-        this.$message.animate({
-            backgroundColor: '#FF9900'
-        }, 50);
-        this.$message.animate({
-            backgroundColor: defColor
-        }, 500);
+
+        // L'animation de couleur a été supprimée.
     }
 }
 
@@ -685,7 +686,7 @@ class TopicLive {
     ajouterOptions() {
         if (this.mobile) return;
         this.options = {
-            optionSon: new TLOption('Son', 'topiclive_son'),
+            optionSon: new TLOption('Son', 'topiclive_son', 'false'), // Son désactivé par défaut
             optionFavicon: new TLOption('Compteur Favicon', 'topiclive_favicon'),
             optionScrollButton: new TLOption('Bouton "Nouveaux messages"', 'topiclive_scrollbutton')
         };
@@ -954,7 +955,7 @@ class TopicLive {
         $("head").append(`
             <style type='text/css'>
                 .topiclive-loading:after { content: ' ○' }
-                .topiclive-loaded:after { content: ' ●' }
+                .topiclive-loaded:after { content: ' ●' }               
             </style>
         `);
         console.log('[TopicLive+] : activé');
