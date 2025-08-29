@@ -234,9 +234,11 @@ class TLOption {
      * Injecte le code HTML de l'option dans le menu et attache les événements.
      */
     injecter() {
-        let option = `<li><span class="pull-left">TopicLive - ${this.nom}</span>`;
-        option += `<input type="checkbox" class="input-on-off" id="${this.id}" ${this.actif ? 'checked' : ''}>`;
-        option += `<label for="${this.id}" class="btn-on-off"></label></li>`;
+        let option = `<li>
+            <span class="float-start">TopicLive - ${this.nom}</span>
+            <input type="checkbox" class="input-on-off" id="${this.id}" ${this.actif ? 'checked' : ''}>
+            <label for="${this.id}" class="btn-on-off"></label>
+        </li>`;
         $('.menu-user-forum').append(option);
         this.bouton = $(`#${this.id}`);
         this.bouton.change(() => {
@@ -953,11 +955,6 @@ class TopicLive {
             <style type='text/css'>
                 .topiclive-loading:after { content: ' ○' }
                 .topiclive-loaded:after { content: ' ●' }
-                .menu-user-forum li:has(input[id^="topiclive_"]) {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                }
             </style>
         `);
         console.log('[TopicLive+] : activé');
