@@ -269,10 +269,10 @@ class Message {
         } else {
             this.id_message = parseInt($message.attr('data-id'), 10);
         }
-        this.date = $(TL.class_date, $message).text().replace(/[\r\n]|#[0-9]+$/g, '').trim();
+        this.date = $(TL.class_date, $message).text().replace(/[\r\n]|#[0-9]+$/g, '');
         this.edition = $message.find('.info-edition-msg').text();
         this.$message = $message;
-        this.pseudo = $('.bloc-pseudo-msg', $message).text().replace(/[\r\n]/g, '').trim();
+        this.pseudo = $('.bloc-pseudo-msg', $message).text().replace(/[\r\n]/g, '');
         this.supprime = false;
     }
 
@@ -329,7 +329,7 @@ class Message {
                     txt
                 }) => {
                     const $msg = TL.formu.obtenirMessage();
-                    let nvmsg = `> Le ${this.date} ${this.pseudo} a écrit :\n>`;
+                    let nvmsg = `> Le ${this.date.trim()} ${this.pseudo.trim()} a écrit :\n>`;
                     nvmsg += `${txt.split('\n').join('\n> ')}\n\n`;
                     if ($msg[0].value === '') {
                         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call($msg[0], `${nvmsg}\n`);
