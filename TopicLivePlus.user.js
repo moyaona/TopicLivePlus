@@ -269,10 +269,10 @@ class Message {
         } else {
             this.id_message = parseInt($message.attr('data-id'), 10);
         }
-        this.date = $(TL.class_date, $message).text().replace(/[\r\n]|#[0-9]+$/g, '');
+        this.date = $(TL.class_date, $message).text().replace(/[\r\n]|#[0-9]+$/g, '').trim();
         this.edition = $message.find('.info-edition-msg').text();
         this.$message = $message;
-        this.pseudo = $('.bloc-pseudo-msg', $message).text().replace(/[\r\n]/g, '');
+        this.pseudo = $('.bloc-pseudo-msg', $message).text().replace(/[\r\n]/g, '').trim();
         this.supprime = false;
     }
 
