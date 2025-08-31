@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name          TopicLive+
+// @name          TopicLive+dev
 // @description   Charge les nouveaux messages d'un topic JVC en direct.
 // @author        kiwec, moyaona, lantea/atlantis
 // @match         https://www.jeuxvideo.com/*
@@ -9,7 +9,7 @@
 // @run-at        document-end
 // @require       https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js
 // @icon          https://image.noelshack.com/fichiers/2025/35/4/1756403430-image.png
-// @version       7.2
+// @version       7.3
 // @grant         none
 // @noframes
 // ==/UserScript==
@@ -122,6 +122,7 @@ class Page {
                     nvMsg.fixBlacklist();
                     nvMsg.fixCitation(TL.ajaxTs, TL.ajaxHash);
                     nvMsg.fixDeroulerCitation();
+                    nvMsg.fixImages(); // AJOUT : Correction des images/gifs
                     if (TL.mobile) {
                         nvMsg.fixMobile();
                     }
@@ -356,6 +357,19 @@ class Message {
     }
 
     /**
+     * AJOUT : Corrige la source des images pour gérer la transparence et les GIFs.
+     */
+    fixImages() {
+        this.trouver(TL.class_contenu).find('img').each(function() {
+            const $img = $(this);
+            const altSrc = $img.attr('alt');
+            if (altSrc && (altSrc.startsWith('http') || altSrc.startsWith('//'))) {
+                $img.attr('src', altSrc);
+            }
+        });
+    }
+
+    /**
      * Corrige l'affichage des messages sur la version mobile.
      */
     fixMobile() {
@@ -381,6 +395,9 @@ class Message {
 
         // On appelle la fonction qui transforme les spans JvCare en liens cliquables.
         TL.page.Transformation();
+
+        // AJOUT : On applique la correction des images sur les messages édités.
+        this.fixImages();
 
         dispatchEvent(new CustomEvent('topiclive:edition', {
             'detail': {
@@ -955,7 +972,7 @@ class TopicLive {
         $("head").append(`
             <style type='text/css'>
                 .topiclive-loading:after { content: ' ○' }
-                .topiclive-loaded:after { content: ' ●' }               
+                .topiclive-loaded:after { content: ' ●' }
             </style>
         `);
         console.log('[TopicLive+] : activé');
