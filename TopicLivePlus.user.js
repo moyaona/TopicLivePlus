@@ -269,10 +269,10 @@ class Message {
         } else {
             this.id_message = parseInt($message.attr('data-id'), 10);
         }
-        this.date = $(TL.class_date, $message).text().replace(/[\r\n]|#[0-9]+$/g, '');
+        this.date = $(TL.class_date, $message).text().replace(/[\r\n]|#[0-9]+$/g, '').trim();
         this.edition = $message.find('.info-edition-msg').text();
         this.$message = $message;
-        this.pseudo = $('.bloc-pseudo-msg', $message).text().replace(/[\r\n]/g, '');
+        this.pseudo = $('.bloc-pseudo-msg', $message).text().replace(/[\r\n]/g, '').trim();
         this.supprime = false;
     }
 
@@ -350,21 +350,35 @@ class Message {
     /**
      * Permet de déplier les citations imbriquées.
      */
-    fixDeroulerCitation() {
-        this.trouver('blockquote').click(function() {
-            $(this).attr('data-visible', '1');
-        });
-    }
+     fixDeroulerCitation() {
+         this.trouver('.text-enrichi-forum > blockquote.blockquote-jv > blockquote').each(function () {
+             const $quote = $(this);
+             // Ajoute le bouton nested-quote-toggle-box au blocquote
+             const $buttonOpenQuote = $('<div class="nested-quote-toggle-box"></div>');
+             $quote.prepend($buttonOpenQuote);
+             // Attache le listener
+             $buttonOpenQuote.on('click', function () {
+                 const $blockquote = $buttonOpenQuote.closest('.blockquote-jv');
+                 const visible = $blockquote.attr('data-visible');
+                 $blockquote.attr('data-visible', visible === '1' ? '' : '1');
+             });
+         });
+     }
+
+
 
     /**
      * AJOUT : Corrige la source des images pour gérer la transparence et les GIFs.
      */
     fixImages() {
-        this.trouver(TL.class_contenu).find('img').each(function() {
+        this.trouver(TL.class_contenu).find('img.img-shack').each(function () {
             const $img = $(this);
-            const altSrc = $img.attr('alt');
-            if (altSrc && (altSrc.startsWith('http') || altSrc.startsWith('//'))) {
-                $img.attr('src', altSrc);
+            const src = $img.attr('src');
+            const extension = $img.attr('alt').split('.').pop(); // alt pour extension
+            if (src && src.includes('/minis/')) {
+                const direct = src.replace(/\/minis\/(.*)\.\w+$/, `/fichiers/$1.${extension}`);
+                $img.attr('src', direct); 
+                $img.css('object-fit', 'contain');
             }
         });
     }
