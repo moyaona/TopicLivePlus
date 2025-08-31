@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name          TopicLive+dev
+// @name          TopicLive+
 // @description   Charge les nouveaux messages d'un topic JVC en direct.
 // @author        kiwec, moyaona, lantea/atlantis
 // @match         https://www.jeuxvideo.com/*
@@ -9,7 +9,7 @@
 // @run-at        document-end
 // @require       https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js
 // @icon          https://image.noelshack.com/fichiers/2025/35/4/1756403430-image.png
-// @version       7.3
+// @version       7.4
 // @grant         none
 // @noframes
 // ==/UserScript==
