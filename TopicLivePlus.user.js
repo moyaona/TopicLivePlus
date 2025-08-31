@@ -360,11 +360,12 @@ class Message {
      * AJOUT : Corrige la source des images pour gérer la transparence et les GIFs.
      */
     fixImages() {
-        this.trouver(TL.class_contenu).find('img').each(function() {
+        this.trouver(TL.class_contenu).find('img.img-shack').each(function () {
             const $img = $(this);
-            const altSrc = $img.attr('alt');
-            if (altSrc && (altSrc.startsWith('http') || altSrc.startsWith('//'))) {
-                $img.attr('src', altSrc);
+            const src = $img.attr('src');
+            if (src && src.includes('/minis/')) {
+                const direct = src.replace('/minis/', '/fichiers/');
+                $img.attr('src', direct);
                 $img.css('object-fit', 'contain');
             }
         });
