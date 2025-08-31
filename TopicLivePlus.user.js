@@ -363,9 +363,11 @@ class Message {
         this.trouver(TL.class_contenu).find('img.img-shack').each(function () {
             const $img = $(this);
             const src = $img.attr('src');
+            const alt = $img.attr('alt'); //alt pour l'extension
             if (src && src.includes('/minis/')) {
-                const direct = src.replace('/minis/', '/fichiers/');
-                $img.attr('src', direct);
+                const extension = alt.split('.').pop(); // recup extension
+                const direct = src.replace(/\/minis\/(.*)\.\w+$/, `/fichiers/$1.${extension}`);
+                $img.attr('src', direct); 
                 $img.css('object-fit', 'contain');
             }
         });
