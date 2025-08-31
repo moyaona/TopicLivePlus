@@ -365,6 +365,7 @@ class Message {
             const altSrc = $img.attr('alt');
             if (altSrc && (altSrc.startsWith('http') || altSrc.startsWith('//'))) {
                 $img.attr('src', altSrc);
+                $img.css('object-fit', 'contain');
             }
         });
     }
