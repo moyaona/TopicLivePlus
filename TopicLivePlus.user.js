@@ -9,7 +9,7 @@
 // @run-at        document-end
 // @require       https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js
 // @icon          https://image.noelshack.com/fichiers/2025/35/4/1756403430-image.png
-// @version       7.4
+// @version       7.5
 // @grant         none
 // @noframes
 // ==/UserScript==
@@ -122,7 +122,7 @@ class Page {
                     nvMsg.fixBlacklist();
                     nvMsg.fixCitation(TL.ajaxTs, TL.ajaxHash);
                     nvMsg.fixDeroulerCitation();
-                    nvMsg.fixImages(); // AJOUT : Correction des images/gifs
+                    nvMsg.fixImages();
                     if (TL.mobile) {
                         nvMsg.fixMobile();
                     }
@@ -357,14 +357,17 @@ class Message {
     }
 
     /**
-     * AJOUT : Corrige la source des images pour gérer la transparence et les GIFs.
+     * Corrige la source des images pour gérer la transparence et les GIFs.
      */
     fixImages() {
         this.trouver(TL.class_contenu).find('img').each(function() {
             const $img = $(this);
-            const altSrc = $img.attr('alt');
-            if (altSrc && (altSrc.startsWith('http') || altSrc.startsWith('//'))) {
-                $img.attr('src', altSrc);
+            const src = $img.attr('src');
+            const extension = $img.attr('alt').split('.').pop(); // alt pour extension
+            if (src && src.includes('/minis/')) {
+                const direct = src.replace(/\/minis\/(.*)\.\w+$/, `/fichiers/$1.${extension}`);
+                $img.attr('src', direct);
+                $img.css('object-fit', 'contain');
             }
         });
     }
