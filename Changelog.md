@@ -1,6 +1,6 @@
 ### Changelog TopicLive+
 
-## 7.5 / 01/09/2025
+## 7.6 / 01/09/2025
 - Fix du bouton d'ouverture des citations imbriquées
 
 ## 7.5 / 01/09/2025
