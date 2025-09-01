@@ -9,7 +9,7 @@
 // @run-at        document-end
 // @require       https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js
 // @icon          https://image.noelshack.com/fichiers/2025/35/4/1756403430-image.png
-// @version       7.5
+// @version       7.6
 // @grant         none
 // @noframes
 // ==/UserScript==
@@ -350,11 +350,20 @@ class Message {
     /**
      * Permet de déplier les citations imbriquées.
      */
-    fixDeroulerCitation() {
-        this.trouver('blockquote').click(function() {
-            $(this).attr('data-visible', '1');
-        });
-    }
+   fixDeroulerCitation() {
+         this.trouver('.text-enrichi-forum > blockquote.blockquote-jv > blockquote').each(function () {
+             const $quote = $(this);
+             // Ajoute le bouton nested-quote-toggle-box au blocquote
+             const $buttonOpenQuote = $('<div class="nested-quote-toggle-box"></div>');
+             $quote.prepend($buttonOpenQuote);
+             // Attache le listener
+             $buttonOpenQuote.on('click', function () {
+                 const $blockquote = $buttonOpenQuote.closest('.blockquote-jv');
+                 const visible = $blockquote.attr('data-visible');
+                 $blockquote.attr('data-visible', visible === '1' ? '' : '1');
+             });
+         });
+     }
 
     /**
      * Corrige la source des images pour gérer la transparence et les GIFs.
