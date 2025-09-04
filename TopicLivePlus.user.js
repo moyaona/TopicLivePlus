@@ -1,7 +1,8 @@
 // ==UserScript==
 // @name          TopicLive+
+// @namespace     TopicLive+JVC
 // @description   Charge les nouveaux messages d'un topic JVC en direct.
-// @author        kiwec, moyaona, lantea/atlantis
+// @author        moyaona, lantea/atlantis, kiwec
 // @match         https://www.jeuxvideo.com/*
 // @match         https://m.jeuxvideo.com/*
 // @downloadURL   https://github.com/moyaona/TopicLivePlus/raw/refs/heads/main/TopicLivePlus.user.js
@@ -9,7 +10,7 @@
 // @run-at        document-end
 // @require       https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js
 // @icon          https://image.noelshack.com/fichiers/2025/35/4/1756403430-image.png
-// @version       7.6
+// @version       7.7
 // @grant         none
 // @noframes
 // ==/UserScript==
@@ -121,6 +122,7 @@ class Page {
                     nvMsg.fixAvatar();
                     nvMsg.fixBlacklist();
                     nvMsg.fixCitation(TL.ajaxTs, TL.ajaxHash);
+                    nvMsg.initPartialQuote(); // On attache la fonction aux nouveaux messages
                     nvMsg.fixDeroulerCitation();
                     nvMsg.fixImages();
                     if (TL.mobile) {
@@ -329,8 +331,12 @@ class Message {
                     txt
                 }) => {
                     const $msg = TL.formu.obtenirMessage();
-                    let nvmsg = `> Le ${this.date} ${this.pseudo} a écrit :\n>`;
+                    const datePropre = this.date.trim().replace(/\s+/g, ' '); /** trim pour nettoyer la citation **/
+                    const pseudoPropre = this.pseudo.trim().replace(/\s+/g, ' ');
+
+                    let nvmsg = `> Le ${datePropre} ${pseudoPropre} a écrit :\n>`;
                     nvmsg += `${txt.split('\n').join('\n> ')}\n\n`;
+
                     if ($msg[0].value === '') {
                         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call($msg[0], `${nvmsg}\n`);
                     } else {
@@ -339,12 +345,76 @@ class Message {
                     $msg[0].dispatchEvent(new Event("input", {
                         bubbles: true
                     }));
+                     location.hash = '#forums-post-message-editor';
+
+                    setTimeout(() => { //focus post citations
                     $msg[0].focus();
-                    location.hash = '#forums-post-message-editor';
+                    }, 50);
                 },
                 error: this.fixCitation.bind(this, timestamp, hash)
             });
         });
+    }
+
+             /**
+     * Initialise les écouteurs d'événements pour la citation partielle sur ce message.
+     */
+    initPartialQuote() {
+        const partialQuoteEvent = async (pointerEvent) => {
+            await new Promise(resolve => setTimeout(resolve, 50));
+            const selection = window.getSelection();
+            const selectedText = selection.toString().trim();
+
+            if (!selectedText.length) return;
+
+            const messageContentNode = this.trouver(TL.class_contenu)[0];
+            const selectionContainer = selection.getRangeAt(0).commonAncestorContainer;
+            if (!messageContentNode.contains(selectionContainer)) {
+                return;
+            }
+
+            TL.$partialQuoteButton[0].onclick = () => this.buildPartialQuote(selectedText);
+
+            const rect = selection.getRangeAt(0).getBoundingClientRect();
+
+            // Top: On se base sur le BAS de la sélection, en ajoutant un décalage pour le triangle.
+            const top = rect.bottom + window.scrollY + 10;
+            // Left: On se base sur le CENTRE HORIZONTAL de la sélection.
+            const left = rect.left + (rect.width / 2) + window.scrollX;
+
+            TL.$partialQuoteButton.css({
+                top: `${top}px`,
+                left: `${left}px`
+            }).addClass('active');
+        };
+
+        this.$message[0].onpointerup = (pe) => partialQuoteEvent(pe);
+        this.$message[0].oncontextmenu = (pe) => partialQuoteEvent(pe);
+    }
+
+    /**
+     * Construit et insère la citation partielle dans la zone de texte.
+     */
+    buildPartialQuote(selection) {
+        const textarea = TL.formu.obtenirMessage()[0];
+        if (!textarea) return;
+
+        const datePropre = this.date.trim().replace(/\s+/g, ' ');
+        const pseudoPropre = this.pseudo.trim().replace(/\s+/g, ' ');
+
+        const newQuoteHeader = `> Le ${datePropre} ${pseudoPropre} a écrit :`;
+        const quotedText = selection.replace(/\n/g, '\n> ');
+        const fullQuote = `${newQuoteHeader}\n> ${quotedText}\n\n`;
+
+        const currentContent = textarea.value.length === 0 ? '' : `${textarea.value.trim()}\n\n`;
+
+        Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(textarea, `${currentContent}${fullQuote}`);
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+        TL.$partialQuoteButton.removeClass('active');
     }
 
     /**
@@ -353,10 +423,10 @@ class Message {
    fixDeroulerCitation() {
          this.trouver('.text-enrichi-forum > blockquote.blockquote-jv > blockquote').each(function () {
              const $quote = $(this);
-             // Ajoute le bouton nested-quote-toggle-box au blocquote
+    // Ajoute le bouton nested-quote-toggle-box au blocquote
              const $buttonOpenQuote = $('<div class="nested-quote-toggle-box"></div>');
              $quote.prepend($buttonOpenQuote);
-             // Attache le listener
+    // Attache le listener
              $buttonOpenQuote.on('click', function () {
                  const $blockquote = $buttonOpenQuote.closest('.blockquote-jv');
                  const visible = $blockquote.attr('data-visible');
@@ -401,14 +471,11 @@ class Message {
     update(nvMessage) {
         if (this.edition == nvMessage.edition) return;
         this.edition = nvMessage.edition;
-
-        // On remplace le contenu du message.
+    // On remplace le contenu du message.
         this.trouver(TL.class_contenu).html(nvMessage.trouver(TL.class_contenu).html());
-
-        // On appelle la fonction qui transforme les spans JvCare en liens cliquables.
+    // On appelle la fonction qui transforme les spans JvCare en liens cliquables.
         TL.page.Transformation();
-
-        // AJOUT : On applique la correction des images sur les messages édités.
+    // On applique la correction des images sur les messages édités.
         this.fixImages();
 
         dispatchEvent(new CustomEvent('topiclive:edition', {
@@ -417,8 +484,6 @@ class Message {
                 jvcake: TL.jvCake
             }
         }));
-
-        // L'animation de couleur a été supprimée.
     }
 }
 
@@ -427,14 +492,11 @@ class Message {
  */
 class Formulaire {
     constructor() {
-        // Mémorise les jetons de session les plus récents pour éviter les erreurs.
+    // Mémorise les jetons de session les plus récents pour éviter les erreurs.
         this.formSessionData = null;
         this.observerLeBouton('.postMessage');
     }
-
-    /**
-     * Attend que le bouton "Poster" apparaisse sur la page pour y attacher le gestionnaire d'événements.
-     */
+   // Attend que le bouton "Poster" apparaisse sur la page pour y attacher le gestionnaire d'événements.
     observerLeBouton(selecteurBouton) {
         const observer = new MutationObserver((mutations, obs) => {
             if (document.querySelector(selecteurBouton)) {
@@ -447,20 +509,14 @@ class Formulaire {
             subtree: true
         });
     }
-
-    /**
-     * Attache l'événement de clic au bouton "Poster" pour intercepter l'envoi.
-     */
+    // Attache l'événement de clic au bouton "Poster" pour intercepter l'envoi.
     hook() {
         const $boutonEnvoi = $('.postMessage');
         if ($boutonEnvoi.length > 0) {
             $boutonEnvoi.off('click.topiclive').on('click.topiclive', (e) => this.envoyer(e));
         }
     }
-
-    /**
-     * Récupère le "payload" de JVC, qui contient les jetons de session.
-     */
+    // Récupère le "payload" de JVC, qui contient les jetons de session.
     _getForumPayload() {
         try {
             return JSON.parse(atob(window.jvc.forumsAppPayload));
@@ -477,10 +533,7 @@ class Formulaire {
         const match = window.location.pathname.match(/forums\/(?:1|42)-(?<forumid>[0-9]+)-/);
         return match ? match.groups.forumid : null;
     }
-
-    /**
-     * Modifie la valeur de la zone de texte d'une manière compatible avec React.
-     */
+    // Modifie la valeur de la zone de texte d'une manière compatible avec React.
     _setTextAreaValue(textarea, value) {
         const prototype = Object.getPrototypeOf(textarea);
         const nativeSetter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
@@ -489,10 +542,7 @@ class Formulaire {
             bubbles: true
         }));
     }
-
-    /**
-     * Gère l'envoi du message via AJAX et la relance automatique en cas d'erreur de session.
-     */
+    // Gère l'envoi du message via AJAX et la relance automatique en cas d'erreur de session.
     envoyer(e) {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -509,13 +559,11 @@ class Formulaire {
 
         let dataObject = {};
         if (this.formSessionData) {
-            dataObject = { ...this.formSessionData
-            };
+            dataObject = { ...this.formSessionData };
         } else {
             const forumPayload = this._getForumPayload();
             if (forumPayload && forumPayload.formSession) {
-                dataObject = { ...forumPayload.formSession
-                };
+                dataObject = { ...forumPayload.formSession };
             } else {
                 this.afficherErreurs("Impossible de récupérer les informations de session initiales.");
                 return;
@@ -534,7 +582,7 @@ class Formulaire {
 
         const self = this;
 
-        // Première tentative d'envoi
+     // Première tentative d'envoi
         $.ajax({
             type: 'POST',
             url: 'https://www.jeuxvideo.com/forums/message/add',
@@ -547,11 +595,9 @@ class Formulaire {
                 }
 
                 const hasSessionError = response.errors && response.errors.session;
-
                 // Si une erreur de session est détectée, on relance automatiquement la requête.
                 if (hasSessionError) {
-                    let retryDataObject = { ...self.formSessionData
-                    };
+                    let retryDataObject = { ...self.formSessionData };
                     retryDataObject.text = message;
                     retryDataObject.topicId = self._getTopicId();
                     retryDataObject.forumId = self._getForumId();
@@ -559,7 +605,7 @@ class Formulaire {
                     retryDataObject.messageId = "undefined";
                     retryDataObject.ajax_hash = $('#ajax_hash_liste_messages').val();
 
-                    // Deuxième tentative (automatique)
+    // Deuxième tentative (automatique)
                     $.ajax({
                         type: 'POST',
                         url: 'https://www.jeuxvideo.com/forums/message/add',
@@ -569,6 +615,7 @@ class Formulaire {
                             if (finalResponse.errors && Object.keys(finalResponse.errors).length > 0) {
                                 self.afficherErreurs(Object.values(finalResponse.errors).join('\n'));
                             } else {
+                                // Succès du premier coup
                                 self._setTextAreaValue($msgTextarea[0], '');
                                 setTimeout(() => TL.charger(), 500);
                             }
@@ -585,7 +632,6 @@ class Formulaire {
                     $boutonEnvoi.prop('disabled', false);
                     $labelBouton.text('Poster');
                 } else {
-                    // Succès du premier coup
                     self._setTextAreaValue($msgTextarea[0], '');
                     setTimeout(() => TL.charger(), 500);
                     $boutonEnvoi.prop('disabled', false);
@@ -695,6 +741,28 @@ class Favicon {
         });
         $('head').append(this.lien);
     }
+   // Cloudflare favicon
+    setCloudflareIcon() {
+        const cloudflareLogo = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTkuMzUgMTAuMDRDMTguNjcgNi41OSAxNS42NCA0IDEyIDRDOS4xMSA0IDYuNiA1LjY0IDUuMzUgOC4wNEMyLjM0IDguMzYgMCAxMC45MSAwIDE0QzAgMTcuNzEgMi42OSAyMCA2IDIwSDE5QzIxLjc2IDIwIDI0IDE3Ljc2IDI0IDE1QzI0IDEyLjM2IDIxLjk1IDEwLjIyIDE5LjM1IDEwLjA0WiIgZmlsbD0iI0Y0ODAyMiIvPjwvc3ZnPg==';
+        $('link[rel*="icon"]').remove();
+        this.lien = $('<link>', {
+            href: cloudflareLogo,
+            rel: 'shortcut icon',
+            type: 'image/svg+xml'
+        });
+        $('head').append(this.lien);
+    }
+  // 410 favicon
+    set410Icon() {
+        const errorIcon16 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAALEUExURUxpcf7ihv/0oeuVNfK1Xv7/wf//6uqPMPS3WvzRff/Vc/nOfv/sh//Pbf3WdEI9Rv7iiP7ce//2rv/Nb/zknv/bevutMv/gkv/wrPzgmfbFcvrXjPzkmv7xq//hf//skP3cgv/mhfGvVP/shF1KOXZNMP/Xff3poP/FYf/AXPmaDf/rhO2ePa+Viv/legAPPf62SvvQd/6NFS0rN/SkPfvZiNp0FoZFD7VUFf7ecf6UGP+fIur//xwYIvOIFuiKH+yIGY6Ki59rPi8rM/+dG1JPXXpwY56hqtyxZ+eQKfvTdURDUEZEUF5cZ/n39pZaHU1JUvnWgv7caIqHjXh5hTk4Q9t7F3dzd0FEVTw6RZViOpaUlpqYm/2QE+aGGEkyJI1pTE9MUtTT02daUyorOX99gPSMGBYVIv+REfCLGP+mDPmLFLFuJWRfYuqHFko3LuKEGEZCSf3ajf71s//4uP/riP/qhv/Zdf/lg//efP/1t//qn/3Sb//ll926b/vGbf/NavfWdP/0o/3iesiaXP/pgv/ddP/XcNSfV/q3VvK4VuvDav7uov/BUv/jeP/fdMSUV//aaLNpGv/rkP3GS/+ySN6QH+OvR//faP/ecP/HNP+yJ+aqMf2jIf66KfS3IvmZJKlnG7FiDfzigP/GKNqIGv6UFumNK2tna/+wJvC9Qv/AJuq0OCMiMP+nIvnOX/6kIpSGaC8wR//mdOyQGZ+WkkpLW4d/eO6dGy8sNsybN7qNPfilII2QnHhoXe3s7NbX24JqULO5x519UKCenyktQ66HSjk1Pv6TFG1rcLSwrj9EXS8qL83MzSEeJ8vKzmpmayMfKGRpfjo/TpWYpyomLY6OltDPzzQxOUFAU3x6fmxwfI6KjRscKZORlWpoctTT1Lu9wpqYm42Lj/+YHnJucp6eojc0PS8rMjU0PtiFJPONGDdGz4cAAABxdFJOUwCN+hdmAgIBAwL97P38aAIDY/392/4V/v7bdLu77P78cf2R/QIDAuX9+hj8agf9HP1ybK/nthuaGv7w/AHz4Ha9/uHY/aL9/LX+2kmW/vz9ytr+/fxveP7+bPz8+P7A/v3++/6I/r79AdwWdeb93X3+CABJWgAAAAlwSFlzAAALEwAACxMBAJqcGAAAARtJREFUGNMBEAHv/gAAABAAFiAcFBkbGgMACAcAAAAFABEdehh7fRdyCwQACQAABgABdBIfIR4VCg0TfyIAJgAADnMCDHV4eXd8gCgpiSwAACongiN2foGGh4iKjTCVNDYAMYwrhYOEi5GUkpabnTugPwA1ky6Oj5CXmp6ipamwRKZAAFGjOZmYnJ+kq7i8rrRJpz4ASrNSr6qsurvGw8G+tU22QgBIsUa30NnU0svCxb3AU61QAEWyVM/W3+Da2M3Hyb9XcUMATLlb197n4+LV3MzEyk6oPQBV0VxiZejm4d3b01hHQXEzAEvOYeXpZ21jX2BaT6E3Ly0APFlkb2zqcOvkXcg6MgAAJAAAAGgAamtmaW5eVjgAJQ8Ah7RsxA/wK1MAAABXelRYdFJhdyBwcm9maWxlIHR5cGUgaXB0YwAAeJzj8gwIcVYoKMpPy8xJ5VIAAyMLLmMLEyMTS5MUAxMgRIA0w2QDI7NUIMvY1MjEzMQcxAfLgEigSi4A6hcRdPJCNZUAAAAASUVORK5CYII=';
+        $('link[rel*="icon"]').remove();
+        this.lien = $('<link>', {
+            href: errorIcon16,
+            rel: 'shortcut icon',
+            type: 'image/png'
+        });
+        $('head').append(this.lien);
+    }
 }
 
 /**
@@ -707,23 +775,20 @@ class TopicLive {
         this.unreadMessageAnchors = [];
         this.isChatModeActive = false;
         this.lastScrollTop = 0;
+        this.isBlocked = false;
+        this.is410 = false;
+        this.$partialQuoteButton = null;
     }
-
-    /**
-     * Ajoute les options du script au menu utilisateur de JVC.
-     */
+  // Options menu
     ajouterOptions() {
         if (this.mobile) return;
         this.options = {
-            optionSon: new TLOption('Son', 'topiclive_son', 'false'), // Son désactivé par défaut
+            optionSon: new TLOption('Son', 'topiclive_son', 'false'), // son off par défaut
             optionFavicon: new TLOption('Compteur Favicon', 'topiclive_favicon'),
             optionScrollButton: new TLOption('Bouton "Nouveaux messages"', 'topiclive_scrollbutton')
         };
     }
-
-    /**
-     * Lance une requête AJAX pour récupérer la dernière version de la page du topic.
-     */
+  // Lance une requête AJAX pour récupérer la dernière version de la page du topic.
     charger() {
         if (this.oldInstance != this.instance) {
             return;
@@ -732,10 +797,7 @@ class TopicLive {
             new Page(data).scan();
         });
     }
-
-    /**
-     * Initialise le script sur la page actuelle.
-     */
+  // Initialise le script sur la page actuelle.
     init() {
         if (typeof $ === 'undefined') {
             return;
@@ -773,74 +835,31 @@ class TopicLive {
             this.loop();
         }
     }
-
-    /**
-     * Crée et configure le bouton flottant "Nouveaux messages / Revenir au direct".
-     */
+  // Crée et configure le bouton flottant "Nouveaux messages / Revenir au direct".
     initScrollButton() {
         const buttonCss = `
             #topiclive-button {
-                z-index: 1000;
-                font-weight: bold;
-                color: white;
-                background-color: rgba(22, 22, 22, 0.3);
-                border: 1px solid rgba(74, 74, 74, 1);
-                backdrop-filter: blur(3px);
-                -webkit-backdrop-filter: blur(3px);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                height: 40px;
-                width: 40px;
-                border-radius: 50%;
-                padding: 0;
-                justify-content: center;
-                transform: translateZ(0);
+                z-index: 1000; font-weight: bold; color: white; background-color: rgba(22, 22, 22, 0.3);
+                border: 1px solid rgba(74, 74, 74, 1); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); cursor: pointer; display: flex; align-items: center;
+                height: 40px; width: 40px; border-radius: 50%; padding: 0; justify-content: center; transform: translateZ(0);
                 transition: width 0.3s ease, padding 0.3s ease, border-radius 0.3s ease, background-color 0.2s ease, transform 0.2s ease;
             }
-            #topiclive-button:hover {
-                background-color: rgba(40, 40, 40, 0.9);
-                transform: translateY(-2px);
-            }
-            #topiclive-button:active {
-                transform: translateY(1px);
-            }
-            #topiclive-button.has-unread-messages {
-                width: auto;
-                padding: 0 10px 0 8px;
-                border-radius: 50px;
-            }
+            #topiclive-button:hover { background-color: rgba(40, 40, 40, 0.9); transform: translateY(-2px); }
+            #topiclive-button:active { transform: translateY(1px); }
+            #topiclive-button.has-unread-messages { width: auto; padding: 0 10px 0 8px; border-radius: 50px; }
             #topiclive-button .topiclive-counter {
-                font-size: 13px;
-                background-color: #007bff;
-                border-radius: 50%;
-                width: 24px;
-                height: 24px;
-                line-height: 24px;
-                text-align: center;
-                margin-right: 8px;
-                transform: scale(0);
+                font-size: 13px; background-color: #007bff; border-radius: 50%; width: 24px; height: 24px;
+                line-height: 24px; text-align: center; margin-right: 8px; transform: scale(0);
                 transition: transform 0.2s 0.1s ease, opacity 0.2s 0.1s ease, width 0.3s ease;
-                opacity: 0;
-                width: 0;
-                overflow: hidden;
-                display: none;
+                opacity: 0; width: 0; overflow: hidden; display: none;
             }
-            #topiclive-button.has-unread-messages .topiclive-counter {
-                display: block;
-                transform: scale(1);
-                opacity: 1;
-                width: 24px;
-            }
-            #topiclive-button .topiclive-arrow {
-                font-size: 20px;
-                line-height: 1;
-                transition: transform 0.3s ease;
-            }
+            #topiclive-button.has-unread-messages .topiclive-counter { display: block; transform: scale(1); opacity: 1; width: 24px; }
+            #topiclive-button .topiclive-arrow { font-size: 20px; line-height: 1; transition: transform 0.3s ease; }
         `;
         $('head').append(`<style>${buttonCss}</style>`);
         this.$tl_button = $('<button id="topiclive-button"><span class="topiclive-counter"></span><span class="topiclive-arrow">↓</span></button>').hide();
+        this.$tl_button.get(0).TL = this;
         $('body').append(this.$tl_button);
 
         this.$tl_button.on('click', () => {
@@ -851,9 +870,7 @@ class TopicLive {
                 const $lastMessage = $(`${TL.class_msg}:last`);
                 if ($lastMessage.length > 0) {
                     const targetScrollTop = $lastMessage.offset().top - 100;
-                    $('html, body').animate({
-                        scrollTop: targetScrollTop
-                    }, 800);
+                    $('html, body').animate({ scrollTop: targetScrollTop }, 800);
                 }
                 this.updateCounters();
             }
@@ -891,42 +908,89 @@ class TopicLive {
         });
         $(window).on('resize', () => this.updateDesktopButtonPosition());
     }
+      // Citation partielle d'un nouveau message
+            initPartialQuoteSystem() {
+        const buttonHTML = '<button id="tl-partial-quote-button"></button>';
+        const buttonCSS = `
+            #tl-partial-quote-button {
+                background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAEVJREFUeNpiYBgFFANGbIL/gQCuAAhwiYEAE6UuoI0BSE78gE8MpwFA7yZAmRvwiTHg0NwAxOeBuACIFXCJjQIqAoAAAwDEvS2y79EjywAAAABJRU5ErkJggg==) no-repeat;
+                background-color: rgb(3, 94, 191);
+                background-position: -1px -1px;
+                border: 0;
+                border-bottom: solid 2px rgb(2, 63, 128);
+                border-radius: 2px;
+                box-sizing: content-box;
+                cursor: pointer;
+                height: 16px;
+                width: 16px;
+                padding: 0;
+                position: absolute;
+                display: none;
+                z-index: 1001;
+                transform: translateX(-50%);
+            }
+            #tl-partial-quote-button.active {
+                display: block;
+                animation: tl-quote-pop 0.2s ease-out;
+            }
+            #tl-partial-quote-button:after {
+                content: "";
+                position: absolute;
+                width: 0;
+                height: 0;
+                border-left: 8px solid transparent;
+                border-right: 8px solid transparent;
+                border-bottom: 8px solid rgb(3, 94, 191);
+                top: -8px;
+                left: 50%;
+                transform: translateX(-50%);
+            }
 
-    /**
-     * Ajuste la position du bouton flottant pour s'adapter à la largeur de la fenêtre.
-     */
+            @keyframes tl-quote-pop {
+                0% { transform: translateX(-50%) scale(0.8); opacity: 0; }
+                70% { transform: translateX(-50%) scale(1.1); opacity: 1; }
+                100% { transform: translateX(-50%) scale(1.0); }
+            }
+        `;
+        $('head').append(`<style>${buttonCSS}</style>`);
+        this.$partialQuoteButton = $(buttonHTML).appendTo('body');
+
+        $(document).on('pointerdown', (e) => {
+            if (!$(e.target).is('#tl-partial-quote-button')) {
+                this.$partialQuoteButton.removeClass('active');
+            }
+        });
+    }
+       // Ajuste la position du bouton flottant pour s'adapter à la largeur de la fenêtre.
     updateDesktopButtonPosition() {
         if (this.mobile || $(window).width() < 1250) {
-            const mobileStyle = {
-                position: 'fixed',
-                bottom: '20px',
-                right: '20px',
-                left: 'auto',
-                top: 'auto',
-                transform: 'none'
-            };
-            this.$tl_button.css(mobileStyle);
+            this.$tl_button.css({ position: 'fixed', bottom: '20px', right: '20px', left: 'auto', top: 'auto', transform: 'none' });
         } else {
             const $container = $('.conteneur-messages-pagi');
             if ($container.length > 0) {
                 const buttonLeft = $container.offset().left + $container.outerWidth() + 15;
-                const desktopStyle = {
-                    position: 'fixed',
-                    bottom: '25px',
-                    left: buttonLeft + 'px',
-                    right: 'auto',
-                    top: 'auto',
-                    transform: 'none'
-                };
-                this.$tl_button.css(desktopStyle);
+                this.$tl_button.css({ position: 'fixed', bottom: '25px', left: buttonLeft + 'px', right: 'auto', top: 'auto', transform: 'none' });
             }
         }
     }
-
-    /**
-     * Met à jour l'état du bouton flottant et le compteur de la favicon.
-     */
+       // Met à jour l'état du bouton flottant et le compteur de la favicon.
     updateCounters() {
+        if (this.isBlocked) { // erreur Cloudflare
+            const $counter = this.$tl_button.find('.topiclive-counter');
+            const cloudflareLogo = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTkuMzUgMTAuMDRDMTguNjcgNi41OSAxNS42NCA0IDEyIDRDOS4xMSA0IDYuNiA1LjY0IDUuMzUgOC4wNEMyLjM0IDguMzYgMCAxMC45MSAwIDE0QzAgMTcuMzEgMi42OSAyMCA2IDIwSDE5QzIxLjc2IDIwIDI0IDE3Ljc2IDI0IDE1QzI0IDEyLjM2IDIxLjk1IDEwLjIyIDE5LjM1IDEwLjA0WiIgZmlsbD0iI0Y0ODAyMiIvPjwvc3ZnPg==';
+            $counter.html('').css({ 'background-color': '#ffffff', 'background-image': `url("${cloudflareLogo}")`, 'background-size': '16px 16px', 'background-repeat': 'no-repeat', 'background-position': 'center' });
+            this.$tl_button.addClass('has-unread-messages').fadeIn();
+            return;
+        }
+
+        if (this.is410) { // erreur 410
+            const $counter = this.$tl_button.find('.topiclive-counter');
+            const errorIcon16 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAALEUExURUxpcf7ihv/0oeuVNfK1Xv7/wf//6uqPMPS3WvzRff/Vc/nOfv/sh//Pbf3WdEI9Rv7iiP7ce//2rv/Nb/zknv/bevutMv/gkv/wrPzgmfbFcvrXjPzkmv7xq//hf//skP3cgv/mhfGvVP/shF1KOXZNMP/Xff3poP/FYf/AXPmaDf/rhO2ePa+Viv/legAPPf62SvvQd/6NFS0rN/SkPfvZiNp0FoZFD7VUFf7ecf6UGP+fIur//xwYIvOIFuiKH+yIGY6Ki59rPi8rM/+dG1JPXXpwY56hqtyxZ+eQKfvTdURDUEZEUF5cZ/n39pZaHU1JUvnWgv7caIqHjXh5hTk4Q9t7F3dzd0FEVTw6RZViOpaUlpqYm/2QE+aGGEkyJI1pTE9MUtTT02daUyorOX99gPSMGBYVIv+REfCLGP+mDPmLFLFuJWRfYuqHFko3LuKEGEZCSf3ajf71s//4uP/riP/qhv/Zdf/lg//efP/1t//qn/3Sb//ll926b/vGbf/NavfWdP/0o/3iesiaXP/pgv/ddP/XcNSfV/q3VvK4VuvDav7uov/BUv/jeP/fdMSUV//aaLNpGv/rkP3GS/+ySN6QH+OvR//faP/ecP/HNP+yJ+aqMf2jIf66KfS3IvmZJKlnG7FiDfzigP/GKNqIGv6UFumNK2tna/+wJvC9Qv/AJuq0OCMiMP+nIvnOX/6kIpSGaC8wR//mdOyQGZ+WkkpLW4d/eO6dGy8sNsybN7qNPfilII2QnHhoXe3s7NbX24JqULO5x519UKCenyktQ66HSjk1Pv6TFG1rcLSwrj9EXS8qL83MzSEeJ8vKzmpmayMfKGRpfjo/TpWYpyomLY6OltDPzzQxOUFAU3x6fmxwfI6KjRscKZORlWpoctTT1Lu9wpqYm42Lj/+YHnJucp6eojc0PS8rMjU0PtiFJPONGDdGz4cAAABxdFJOUwCN+hdmAgIBAwL97P38aAIDY/392/4V/v7bdLu77P78cf2R/QIDAuX9+hj8agf9HP1ybK/nthuaGv7w/AHz4Ha9/uHY/aL9/LX+2kmW/vz9ytr+/fxveP7+bPz8+P7A/v3++/6I/r79AdwWdeb93X3+CABJWgAAAAlwSFlzAAALEwAACxMBAJqcGAAAARtJREFUGNMBEAHv/gAAABAAFiAcFBkbGgMACAcAAAAFABEdehh7fRdyCwQACQAABgABdBIfIR4VCg0TfyIAJgAADnMCDHV4eXd8gCgpiSwAACongiN2foGGh4iKjTCVNDYAMYwrhYOEi5GUkpabnTugPwA1ky6Oj5CXmp6ipamwRKZAAFGjOZmYnJ+kq7i8rrRJpz4ASrNSr6qsurvGw8G+tU22QgBIsUa30NnU0svCxb3AU61QAEWyVM/W3+Da2M3Hyb9XcUMATLlb197n4+LV3MzEyk6oPQBV0VxiZejm4d3b01hHQXEzAEvOYeXpZ21jX2BaT6E3Ly0APFlkb2zqcOvkXcg6MgAAJAAAAGgAamtmaW5eVjgAJQ8Ah7RsxA/wK1MAAABXelRYdFJhdyBwcm9maWxlIHR5cGUgaXB0YwAAeJzj8gwIcVYoKMpPy8xJ5VIAAyMLLmMLEyMTS5MUAxMgRIA0w2QDI7NUIMvY1MjEzMQcxAfLgEigSi4A6hcRdPJCNZUAAAAASUVORK5CYII=';
+            $counter.html('').css({ 'background-color': '#FFffff', 'background-image': `url("${errorIcon16}")`, 'background-size': '16px 16px', 'background-repeat': 'no-repeat', 'background-position': 'center' });
+            this.$tl_button.addClass('has-unread-messages').fadeIn();
+            return;
+        }
+
         let countText = '';
         if (this.nvxMessages > 0) {
             countText = this.nvxMessages > 99 ? '99+' : `${this.nvxMessages}`;
@@ -937,7 +1001,7 @@ class TopicLive {
         if (this.options && this.options.optionScrollButton.actif) {
             const isOnLastPage = $('.pagi-suivant-inactif').length > 0;
             if (this.nvxMessages > 0) {
-                this.$tl_button.find('.topiclive-counter').text(countText);
+                this.$tl_button.find('.topiclive-counter').text(countText).css({ 'background-color': '#007bff', 'background-image': 'none' });
                 this.$tl_button.addClass('has-unread-messages').fadeIn();
             } else if (!this.isChatModeActive && isOnLastPage) {
                 this.$tl_button.removeClass('has-unread-messages').fadeIn();
@@ -958,41 +1022,24 @@ class TopicLive {
     addUnreadAnchor($message) {
         this.unreadMessageAnchors.push($message);
     }
-
-    /**
-     * Point d'entrée principal du script, initialise les composants statiques.
-     */
+     // Point d'entrée principal du script, initialise les composants statiques.
     initStatic() {
         this.favicon = new Favicon();
         this.son = new Audio('https://github.com/moyaona/TopicLivePlus/raw/refs/heads/main/notification_sound_tl.mp3');
         this.suivreOnglets();
         this.initScrollButton();
+        this.initPartialQuoteSystem();
         this.init();
         addEventListener('instantclick:newpage', this.init.bind(this));
         addEventListener('topiclive:optionchanged', (e) => {
-            const {
-                id,
-                actif
-            } = e.detail;
-            if (id === 'topiclive_favicon' && !actif) {
-                this.favicon.maj('');
-            }
-            if (id === 'topiclive_scrollbutton' && !actif) {
-                this.$tl_button.fadeOut();
-            }
+            const { id, actif } = e.detail;
+            if (id === 'topiclive_favicon' && !actif) this.favicon.maj('');
+            if (id === 'topiclive_scrollbutton' && !actif) this.$tl_button.fadeOut();
         });
-        $("head").append(`
-            <style type='text/css'>
-                .topiclive-loading:after { content: ' ○' }
-                .topiclive-loaded:after { content: ' ●' }
-            </style>
-        `);
+        $("head").append(`<style type='text/css'>.topiclive-loading:after { content: ' ○' }.topiclive-loaded:after { content: ' ●' }</style>`);
         console.log('[TopicLive+] : activé');
     }
-
-    /**
-     * Décode les classes JvCare pour obtenir une URL.
-     */
+    // Décode les classes JvCare pour obtenir une URL.
     jvCake(classe) {
         const base16 = '0A12B34C56D78E9F';
         let lien = '';
@@ -1002,34 +1049,24 @@ class TopicLive {
         }
         return lien;
     }
-
-    /**
-     * Affiche une alerte à l'utilisateur.
-     */
+// Affiche une alerte à l'utilisateur.
     alert(message) {
         try {
-            modal('erreur', {
-                message
-            });
+            modal('erreur', { message });
         } catch (err) {
             alert(message);
         }
     }
-
-    /**
-     * Boucle principale de rafraîchissement.
-     */
+// Boucle principale de rafraîchissement.
     loop() {
+        if (this.isBlocked || this.is410) return; // fin de boucle si erreur
         if (typeof this.idanalyse !== 'undefined') window.clearTimeout(this.idanalyse);
         let duree = this.ongletActif ? 5000 : 10000;
         if (this.mobile) duree = 10000;
         this.oldInstance = this.instance;
         this.idanalyse = setTimeout(this.charger.bind(this), duree);
     }
-
-    /**
-     * Met à jour l'URL à rafraîchir pour toujours pointer vers la dernière page.
-     */
+// Met à jour l'URL à rafraîchir pour toujours pointer vers la dernière page.
     majUrl(page) {
         if (this.estMP) return;
         const $bouton = page.trouver(this.class_page_fin);
@@ -1048,19 +1085,180 @@ class TopicLive {
             this.url = testUrl.join('-');
         }
     }
-
-    /**
-     * Détecte les changements de visibilité de l'onglet.
-     */
+// Détecte les changements de visibilité de l'onglet.
     suivreOnglets() {
         document.addEventListener('visibilitychange', () => {
             this.ongletActif = !document.hidden;
         });
     }
 
-    /**
-     * Wrapper pour la requête AJAX de récupération de la page.
-     */
+    handleCloudflareBlock() {
+        if (this.isBlocked) return;
+        this.isBlocked = true;
+        window.clearTimeout(this.idanalyse);
+        this.showCloudflareBanner();
+        this.favicon.setCloudflareIcon();
+        this.updateCounters();
+    }
+
+// Bannière si Cloudflare
+       showCloudflareBanner() {
+        const bannerId = 'tl-cloudflare-banner';
+        if (document.getElementById(bannerId)) return;
+
+        const bannerCSS = `
+            #${bannerId} {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                position: fixed;
+                top: 25%;
+                width: auto;
+                background-color: rgba(22, 22, 22, 0.5);
+                backdrop-filter: blur(3px);
+                -webkit-backdrop-filter: blur(3px);
+                color: #FFFFFF;
+                text-align: center;
+                padding: 15px 25px;
+                font-size: 16px;
+                font-weight: bold;
+                z-index: 99999;
+                border-radius: 8px;
+                border: 1px solid #F48022;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+                opacity: 0;
+                visibility: hidden; /* Totalement invisible au début */
+                transition: opacity 0.4s ease-out;
+            }
+            #${bannerId}.visible {
+                opacity: 1;
+                visibility: visible; /* Rendu visible pour l'animation */
+            }
+            #${bannerId} svg {
+                width: 24px;
+                height: 24px;
+                margin-right: 15px;
+                flex-shrink: 0;
+            }
+        `;
+        const $style = $(`<style type='text/css'>${bannerCSS}</style>`);
+        $('head').append($style);
+
+        const cloudflareLogoSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14C0 17.31 2.69 20 6 20H19C21.76 20 24 17.76 24 15C24 12.36 21.95 10.22 19.35 10.04Z" fill="#F48022"/></svg>`;
+        const bannerText = 'Cloudflare : Actualisez la page pour effectuer la vérification';
+        const $banner = $(`<div id="${bannerId}">${cloudflareLogoSVG}<span>${bannerText}</span></div>`);
+        $('body').prepend($banner);
+
+        const positionBanner = () => {
+            if (this.mobile || $(window).width() < 1250) {
+                 $banner.css({
+                    'left': '50%',
+                    'transform': 'translate(-50%, -50%)'
+                 });
+            } else {
+                const $container = $('.conteneur-messages-pagi');
+                if ($container.length > 0) {
+                    const bannerLeft = $container.offset().left + ($container.outerWidth() / 2) - ($banner.outerWidth() / 2);
+                    $banner.css({
+                        'left': bannerLeft + 'px',
+                        'transform': 'translateY(-50%)'
+                    });
+                }
+            }
+        };
+
+        positionBanner(); //
+        requestAnimationFrame(() => {
+            $banner.addClass('visible');
+        });
+
+        $(window).off('resize.cfbanner').on('resize.cfbanner', positionBanner);
+    }
+
+    handle410Error() {
+        if (this.is410) return;
+        this.is410 = true;
+        window.clearTimeout(this.idanalyse);
+        this.show410Banner();
+        this.favicon.set410Icon();
+        this.updateCounters();
+    }
+// Bannière si erreur 410
+       show410Banner() {
+        const bannerId = 'tl-410-banner';
+        if (document.getElementById(bannerId)) return;
+
+        const bannerCSS = `
+            #${bannerId} {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                position: fixed;
+                top: 25%;
+                width: auto;
+                background-color: rgba(22, 22, 22, 0.5);
+                backdrop-filter: blur(3px);
+                -webkit-backdrop-filter: blur(3px);
+                color: #FFFFFF;
+                text-align: center;
+                padding: 15px 25px;
+                font-size: 16px;
+                font-weight: bold;
+                z-index: 99999;
+                border-radius: 8px;
+                border: 1px solid #FFFFFF;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+                opacity: 0;
+                visibility: hidden; /* Totalement invisible au début */
+                transition: opacity 0.4s ease-out;
+            }
+            #${bannerId}.visible {
+                opacity: 1;
+                visibility: visible; /* Rendu visible pour l'animation */
+            }
+            #${bannerId} .tl-410-icon {
+                width: 24px;
+                height: 24px;
+                margin-right: 15px;
+                flex-shrink: 0;
+            }
+        `;
+        const $style = $(`<style type='text/css'>${bannerCSS}</style>`);
+        $('head').append($style);
+
+        const errorIcon24 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAMAAADXqc3KAAACeVBMVEUAAAD8+/siHib7lxv+1mk6OEUmIiv+pyNHR1b+43r+uCksKTT8ixf+3HL+64v/6YT+wS00Mjz+44MYFBz+03P+23v+zGtVVmZCQkz+w1vqiBSsWgv++sv/8JHp6Oj/niD944rX1tf+7JH+3YIwLjf+yWP+xGPGllf+u1QdGSLtkxbleRb9vFr9s0uXlpmIhopVU1n++8T+9MO2tbdoaHPBiUrGxsdAPUnkdgv+1Xp3dXn+87z+87Wnpqn8oR1oZWr97Kv8zHFXWnD/0V1XSUXqpCf98pv65JPInmJLTWL+q0P/xzvoiCTx8O/96rT+/KL+7Jnys1LDjFD97br886L724z/yEXohzX+/qr866L93ZxeYHJxbnFPUmbqm1X9tlP9qjbomijHdhTogg3Pz9H+9smurbL986z64pmDe3Tqxmj8vWXLpGP3u1v/tzirYw3g3d3CwMP65KWdnKKIiZL7zIX1035kXF/jtV3Wplqaelr2t1b6r0r2qUJrU0HXlDXajDPlfijHeSPZihoRDRTU0c7++7PDubP85Kv625T904p5eoWKgnn1zHL/xWr2xWmSeGLzq1RSTlPLkE7ntEcvMkCUZDtDOzt4VDq8eznqpTjrlzXLgzS4dCnYfiTNiRrafxe4axPm4t7++r6zqqSlnJf3ypb1woz204jyuoLrsn713H2Ui3z9ynvwzXnprXf203O2oHL1yXGql2/dvGzyr2x6cmvTqmXlu2Lzq2G9l17LoFnXsFaqflHwnE3rlUfrq0WodzOrcC63bSW3ZQ6qoJ2RjI+lmHXatnDNsG2Zg2fywmTzqVuRb1Z0XVGieUvyp0jpikFkT0HaCA+lAAAAAXRSTlMAQObYZgAAAAlwSFlzAAALEwAACxMBAJqcGAAABO5pVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDkuMS1jMDAxIDc5LjE0NjI4OTksIDIwMjMvMDYvMjUtMjA6MDE6NTUgICAgICAgICI+IDxyZGY6UkRGIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyI+IDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiIHhtbG5zOnhtcD0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wLyIgeG1sbnM6ZGM9Imh0dHA6Ly9wdXJsLm9yZy9kYy9lbGVtZW50cy8xLjEvIiB4bWxuczpwaG90b3Nob3A9Imh0dHA6Ly9ucy5hZG9iZS5jb20vcGhvdG9zaG9wLzEuMC8iIHhtbG5zOnhtcE1NPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvbW0vIiB4bWxuczpzdEV2dD0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL3NUeXBlL1Jlc291cmNlRXZlbnQjIiB4bXA6Q3JlYXRvclRvb2w9IkFkb2JlIFBob3Rvc2hvcCAyNS4zIChXaW5kb3dzKSIgeG1wOkNyZWF0ZURhdGU9IjIwMjUtMDktMDJUMDE6NTY6NDUrMDI6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDI1LTA5LTAyVDAzOjMzOjQxKzAyOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDI1LTA5LTAyVDAzOjMzOjQxKzAyOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMiIgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDpiMjYyYmUwOC04OWExLTE1NGItOGZhYS1mOTVmNDcxNjE1ZmEiIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6YjI2MmJlMDgtODlhMS0xNTRiLThmYWEtZjk1ZjQ3MTYxNWZhIiB4bXBNTTpPcmlnaW5hbERvY3VtZW50SUQ9InhtcC5kaWQ6YjI2MmJlMDgtODlhMS0xNTRiLThmYWEtZjk1ZjQ3MTYxNWZhIj4gPHhtcE1NOkhpc3Rvcnk+IDxyZGY6U2VxPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0iY3JlYXRlZCIgc3RFdnQ6aW5zdGFuY2VJRD0ieG1wLmlpZDpiMjYyYmUwOC04OWExLTE1NGItOGZhYS1mOTVmNDcxNjE1ZmEiIHN0RXZ0OndoZW49IjIwMjUtMDktMDJUMDE6NTY6NDUrMDI6MDAiIHN0RXZ0OnNvZnR3YXJlQWdlbnQ9IkFkb2JlIFBob3Rvc2hvcCAyNS4zIChXaW5kb3dzKSIvPiA8L3JkZjpTZXE+IDwveG1wTU06SGlzdG9yeT4gPC9yZGY6RGVzY3JpcHRpb24+IDwvcmRmOlJERj4gPC94OnhtcG1ldGE+IDw/eHBhY2tldCBlbmQ9InIiPz6AltmBAAAB9klEQVQokV1Sz2vTcBx9n883SX8k7cziZsBOLZQyWzA6x+bJoghDmBuIDBSdlyLozjuJA0X8A7yIJw+ioggDL8p2mAdRROpFq45NqtUdxmraNbi0abN4cCviuzweDx68xwO2Md2789jFhx1Jf2nqZ3mtFwmgPjQxCAAQAID00We5HSW3sva1S7zJv+gY4+W1jVIxUm/1/dr9diKIftmKGi9kliuQIBCgliTHuDUGCKB/w61UQewqQa2RJMdo1/uLYKRzPVgn6YKrNWrdY3DQlt+nAUb74+c6eQ/mH1VdXBvZZ9sl/dOPUQhkexbhQQvsAkYGZgY+AN8TrxyHp7HgeZBi0bimLZQBwJSA1Um6eseF5AKHlgAPetUH2kAkznUXLQCnr8Dz4Ff87UmkeAtwc+G5OQD+ubOzi8V1GVB1ZuDS85OroVBjc5OWn9x7nWg2I749JS6XWn335yMrzTOxcuC/pGAl2upytRRgDsukWnI4mSTdolRqF1mqopqALBPtyasKHVBUnRQ+ZdFTi1VCCvJvNbQEvwk5ZpNud8e/ye0IoChElGeDdGI+bHCO6PxtxQQUNoYOMrNJN5mt/YqqD58AAKhsWMzMiq7K4Zm7mpY5stUxbA4WbgghhBCapmUy1/89A0Yr7wDguLP3Mf7DbDabzU525B+VgKLP+4NhawAAAABJRU5ErkJggg==';
+        const bannerText = "410 : Topic censuré par la liberté d'expression";
+        const errorIconHTML = `<img src="${errorIcon24}" class="tl-410-icon" alt="Erreur 410">`;
+        const $banner = $(`<div id="${bannerId}">${errorIconHTML}<span>${bannerText}</span></div>`);
+        $('body').prepend($banner);
+
+        const positionBanner = () => {
+            if (this.mobile || $(window).width() < 1250) {
+                 $banner.css({
+                    'left': '50%',
+                    'transform': 'translate(-50%, -50%)'
+                 });
+            } else {
+                const $container = $('.conteneur-messages-pagi');
+                if ($container.length > 0) {
+                    const bannerLeft = $container.offset().left + ($container.outerWidth() / 2) - ($banner.outerWidth() / 2);
+                    $banner.css({
+                        'left': bannerLeft + 'px',
+                        'transform': 'translateY(-50%)'
+                    });
+                }
+            }
+        };
+
+        positionBanner();
+        requestAnimationFrame(() => {
+            $banner.addClass('visible');
+        });
+
+        $(window).off('resize.410banner').on('resize.410banner', positionBanner);
+    }
+
+// Wrapper pour la requête AJAX de récupération de la page.
     GET(cb) {
         const blocChargement = this.mobile ? $('.bloc-nom-sujet:last > span') : $('#bloc-formulaire-forum .titre-bloc');
         blocChargement.addClass('topiclive-loading');
@@ -1069,19 +1267,27 @@ class TopicLive {
             type: 'GET',
             url: this.url,
             timeout: 5000,
-            success: data => {
-                if (this.oldInstance != this.instance) {
+            success: (data, textStatus, jqXHR) => {
+                const responseText = jqXHR.responseText;
+                if (responseText.includes('id="cf-challenge-form"') || responseText.includes('<title>Just a moment...</title>')) {
+                    TL.handleCloudflareBlock();
                     return;
                 }
-                blocChargement.removeClass('topiclive-loading');
-                blocChargement.addClass('topiclive-loaded');
-                cb($(data.substring(data.indexOf('<!DOCTYPE html>'))));
-                setTimeout(() => {
-                    blocChargement.removeClass('topiclive-loaded');
-                }, 100);
+                if (this.oldInstance != this.instance) return;
+                blocChargement.removeClass('topiclive-loading').addClass('topiclive-loaded');
+                cb($(responseText.substring(responseText.indexOf('<!DOCTYPE html>'))));
+                setTimeout(() => { blocChargement.removeClass('topiclive-loaded'); }, 100);
                 TL.loop();
             },
-            error: () => {
+            error: (jqXHR) => {
+                if (jqXHR.status === 403 && jqXHR.responseText.includes('Cloudflare')) {
+                    TL.handleCloudflareBlock();
+                    return;
+                }
+                if (jqXHR.status === 410) {
+                    TL.handle410Error();
+                    return;
+                }
                 TL.loop();
             }
         });
