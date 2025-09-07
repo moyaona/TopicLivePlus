@@ -1,5 +1,7 @@
 ### Changelog TopicLive+
 
+## 8.0 / 07/09/2025
+
 ## 7.7 / 04/09/2025
 - Ajout avertisseur d'erreur 410 ou vérification Cloudflare
 - Ajout fonction citations partielles sur les nouveaux messages
