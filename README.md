@@ -2,7 +2,7 @@
 
 ## Introduction
 
-<p>TopicLive+ est le projet de reprise et d'amélioration du script TopicLive par Kiwec.<br>
+<p>TopicLive+ est le projet de reprise et d'amélioration du script TopicLive.<br>
 C'est un userscript pour jeuxvideo.com qui charge les messages des forums en direct. Plus besoin de rafraichir la page !<br>
 Un bouton de navigation vous mène au dernier message posté et lance le mode chat, les messages sont alors chargés automatiquement avec un scroll continu.
 
