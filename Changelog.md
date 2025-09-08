@@ -12,6 +12,7 @@
   - Redirection et focus sur message posté depuis n'importe quelle page
   - Focus sur message posté et reprise auto du direct après chaque post
 - Suppression support version mobile m.jeuxvideo.com obsolète
+- Nouveau style des boutons de navigation
 
 ## 7.7 / 04/09/2025
 - Ajout avertisseur d'erreur 410 ou vérification Cloudflare
