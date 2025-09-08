@@ -6,6 +6,8 @@
 C'est un userscript pour jeuxvideo.com qui charge les messages des forums en direct. Plus besoin de rafraichir la page !<br>
 Un compteur de messages s'affichera en favicon, ainsi qu'un bouton sur la page pour accéder automatiquement aux nouveaux messages.</p>
 
+<p>Voir le Changelog pour le détail des dernières mises à jour du script.</p>
+
 ## Installation
 
 - Installez ViolentMonkey ou Tampermonkey.
