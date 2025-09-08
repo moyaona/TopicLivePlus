@@ -1,6 +1,17 @@
 ### Changelog TopicLive+
 
-## 8.0 / 07/09/2025
+## 8.0 / 08/09/2025
+- Nouveau menu-tutoriel présentant les différentes options du script et permettant leur activation/désactivation
+- Interface de navigation mobile optimisée :
+  - Mode minimaliste 1 bouton : [Accéder au direct/Nouveaux messages]
+  - Mode normal 2 boutons : [Direct/NM] + [Liste des sujets - Swipe vers Réponse rapide]
+  - Mode complet 3 boutons : [Direct/NM] + [Liste des sujets] + [Réponse rapide]
+  - Compteur de connectés live sur les pages forums et topics
+- Fix :
+  - Interface de navigation affichée sur chaque page
+  - Redirection et focus sur message posté depuis n'importe quelle page
+  - Focus sur message posté et reprise auto du direct après chaque post
+- Suppression support version mobile m.jeuxvideo.com obsolète
 
 ## 7.7 / 04/09/2025
 - Ajout avertisseur d'erreur 410 ou vérification Cloudflare
