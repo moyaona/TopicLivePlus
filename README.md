@@ -4,7 +4,9 @@
 
 <p>TopicLive+ est le projet de reprise et d'amélioration du script TopicLive par Kiwec.<br>
 C'est un userscript pour jeuxvideo.com qui charge les messages des forums en direct. Plus besoin de rafraichir la page !<br>
-Un compteur de messages s'affichera en favicon, ainsi qu'un bouton sur la page pour accéder automatiquement aux nouveaux messages.</p>
+Un bouton de navigation vous mène au dernier message posté et lance le mode chat, les messages sont alors chargés automatiquement avec un scroll continu.
+
+Si un nouveau message est posté un compteur de nouveaux messages apparait. Cliquez dessus pour atteindre ces messages directement. La favicon se mettra aussi à jour.</p>
 
 <p>Voir le Changelog pour le détail des dernières mises à jour du script.</p>
 
