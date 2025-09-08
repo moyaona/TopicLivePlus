@@ -42,6 +42,6 @@ Si un nouveau message est posté un compteur de nouveaux messages apparait. Cliq
 - Menu contextuel dédié.
 
 ## Crédits
-- Kiwec : Base du script / https://github.com/kiwec (script original disponible ici : https://github.com/moyaona/TopicLive_Enhanced )
+- Kiwec : Base du script / https://github.com/kiwec (script original disponible ici : https://git.kiwec.net/kiwec/TopicLive )
 - Lantea (github) / Atlantis (jvscript) : Aide et conseils; Fix des citations / https://github.com/Lantea-Git / https://jvscript.fr/search/Atlantis
 - Moyaona : Refondation du script
