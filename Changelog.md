@@ -1,5 +1,16 @@
 ### Changelog TopicLive+
 
+## 8.1 / 23/09/2025
+- Fix citations imbriquées des messages édités
+- Fix position du bouton menu
+- Correction des couleurs de fond des messages alternées après 100 messages sur la page
+- Correction du bug de duplication du topic lié à l'effacement de mémoire au changement de page
+- Mise en pause du script lors du lancement de JvChat
+- Ajout distinction messages supprimés
+- Ajustement largeur écran passage mode PC au mode Mobile
+- Ajustement des bannières 410 et Cloudflare selon nouvelle largeur mobile
+- Correction sélection du rang utilisateur/modération pour utilisation du script par la modération
+
 ## 8.0 / 08/09/2025
 - Nouveau menu-tutoriel présentant les différentes options du script et permettant leur activation/désactivation
 - Interface de navigation mobile optimisée :
