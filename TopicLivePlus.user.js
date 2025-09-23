@@ -9,11 +9,21 @@
 // @run-at        document-end
 // @require       https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js
 // @icon          https://image.noelshack.com/fichiers/2025/35/4/1756403430-image.png
-// @version       8.0
+// @version       8.1
 // @grant         GM_xmlhttpRequest
 // @connect       raw.githubusercontent.com
+// @connect       tiktok.com
+// @connect       vxinstagram.com
+// @connect       publish.twitter.com
+// @connect       platform.twitter.com
+// @connect       api.streamable.com
+// @connect       webmshare.com
+// @connect       api.fxtwitter.com
 // @noframes
 // ==/UserScript==
+
+
+
 
 /**
  * Représente une page de topic et gère l'analyse du DOM pour en extraire les messages.
@@ -59,9 +69,17 @@ class Page {
             console.error(`[TopicLive+] Erreur jsli.Transformation() : ${err}`);
         }
         const nb_messages = $(`${TL.class_msg}:not(.msg-pseudo-blacklist)`).size();
-        if (nb_messages > 100) {
-            $(`${TL.class_msg}:not(.msg-pseudo-blacklist)`).slice(0, nb_messages - 100).remove();
-        }
+if (nb_messages > 100) {
+    let messagesASupprimer = nb_messages - 100;
+
+    // Si le nombre de messages à supprimer est impair, on en supprime un de plus
+    // pour garantir que la parité est conservée.
+    if (messagesASupprimer % 2 !== 0) {
+        messagesASupprimer++;
+    }
+
+    $(`${TL.class_msg}:not(.msg-pseudo-blacklist)`).slice(0, messagesASupprimer).remove();
+}
         dispatchEvent(new CustomEvent('topiclive:doneprocessing', {
             'detail': {
                 jvcake: TL.jvCake
@@ -110,6 +128,56 @@ class Page {
         let messages_a_afficher = [];
         const nvMsgs = this.obtenirMessages();
         const isOnLastPage = $('.pagi-suivant-inactif').length > 0;
+
+
+        // --- NOUVELLE LOGIQUE : DÉTECTION ET CORRECTION DES MESSAGES SUPPRIMÉS ---
+        if (isOnLastPage) {
+            for (const ancienMsg of TL.messages) {
+                const stillExists = nvMsgs.some(nvMsg => nvMsg.id_message === ancienMsg.id_message);
+
+                if (!stillExists && !ancienMsg.supprime) {
+                    ancienMsg.supprime = true;
+                    ancienMsg.$message.addClass('topiclive-deleted');
+
+                    const $originalButton = ancienMsg.trouver('.bloc-options-msg .picto-msg-quote');
+                    if ($originalButton.length > 0) {
+                        // On clone le bouton SANS ses événements
+                        const $cleanButton = $originalButton.clone(false);
+
+                        // On remplace l'ancien bouton par le nouveau
+                        $originalButton.replaceWith($cleanButton);
+
+                        // On attache notre propre logique de clic au bouton propre
+                        $cleanButton.on('click', (e) => {
+                            e.preventDefault(); // Bonne pratique
+
+                            const $msgTextarea = TL.formu.obtenirMessage();
+                            const datePropre = ancienMsg.date.trim().replace(/\s+/g, ' ');
+                            const pseudoPropre = ancienMsg.pseudo.trim().replace(/\s+/g, ' ');
+
+                            // Récupère le texte du message en préservant les sauts de ligne
+                            const messageContent = ancienMsg.trouver(TL.class_contenu)[0].innerText.trim();
+
+                            let nvmsg = `> Le ${datePropre} ${pseudoPropre} a écrit :\n>`;
+                            nvmsg += `${messageContent.split('\n').join('\n> ')}\n\n`;
+
+                            // Insère la citation dans la zone de texte
+                            if ($msgTextarea[0].value === '') {
+                                Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call($msgTextarea[0], `${nvmsg}\n`);
+                            } else {
+                                Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call($msgTextarea[0], `${$msgTextarea[0].value}\n\n${nvmsg}`);
+                            }
+                            $msgTextarea[0].dispatchEvent(new Event("input", { bubbles: true }));
+                            location.hash = '#forums-post-message-editor';
+                            setTimeout(() => { $msgTextarea[0].focus(); }, 50);
+                        });
+                    }
+                    
+                }
+            }
+        }
+        // --- FIN DE LA NOUVELLE LOGIQUE ---
+
         try {
             for (let nvMsg of nvMsgs) {
                 let nv = true;
@@ -131,6 +199,10 @@ class Page {
                     nvMsg.fixDeroulerCitation();
                     nvMsg.fixImages();
                     $(`${TL.class_pagination}:last`).before(nvMsg.$message);
+
+                    // --- AJOUT DE L'APPEL A MEDIAEMBED POUR LES NOUVEAUX MESSAGES ---
+                    TL.mediaEmbed.processNode(nvMsg.$message);
+
                     messages_a_afficher.push({
                         message: nvMsg,
                         cancelled: false
@@ -150,7 +222,7 @@ class Page {
             console.error(`[TopicLive+] Erreur nouveaux messages : ${err}`);
         }
         TL.majUrl(this);
-        if (messages_a_afficher.length > 0) {
+       if (messages_a_afficher.length > 0) {
             setTimeout(() => {
                 let maj = false;
                 let $firstNewMessageToShow = null;
@@ -161,7 +233,11 @@ class Page {
                         if (!$firstNewMessageToShow) {
                             $firstNewMessageToShow = msg.message.$message;
                         }
-                        msg.message.$message.fadeIn('slow');
+
+                        msg.message.$message.fadeIn('slow', function() {
+                            TL.mediaEmbed.processNode(this);
+                        });
+
                         TL.addUnreadAnchor(msg.message.$message);
                         maj = true;
                     }
@@ -250,6 +326,7 @@ class Message {
         this.$message = $message;
         this.pseudo = $('.bloc-pseudo-msg', $message).text().replace(/[\r\n]/g, '');
         this.supprime = false;
+
     }
 
     /**
@@ -331,7 +408,7 @@ class Message {
     }
 
     /**
-     * Initialise les écouteurs d'événements pour la citation partielle sur ce message.
+     * Initialise les écouteurs d'événements pour la citation partielle sur le message.
      */
     initPartialQuote() {
         const partialQuoteEvent = async (pointerEvent) => {
@@ -438,7 +515,12 @@ class Message {
         this.edition = nvMessage.edition;
         this.trouver(TL.class_contenu).html(nvMessage.trouver(TL.class_contenu).html());
         TL.page.Transformation();
+
+        // --- AJOUT DE L'APPEL A MEDIAEMBED POUR LES MESSAGES EDITÉS ---
+        TL.mediaEmbed.processNode(this.$message);
+
         this.fixImages();
+        this.fixDeroulerCitation();
 
         dispatchEvent(new CustomEvent('topiclive:edition', {
             'detail': {
@@ -455,7 +537,9 @@ class Message {
 class Formulaire {
     constructor() {
         this.formSessionData = null;
+        this.selectedGroup = "1"; // Par défaut, on est un utilisateur standard
         this.observerLeBouton('.postMessage');
+        this.observerLeMenuModeration(); //Observation du menu modération
     }
     observerLeBouton(selecteurBouton) {
         const observer = new MutationObserver((mutations, obs) => {
@@ -469,6 +553,37 @@ class Formulaire {
             subtree: true
         });
     }
+
+    observerLeMenuModeration() {
+    const SELECTEUR_MENU_MODO = '#form_alias_rang';
+
+    const setupListener = (selectElement) => {
+        // Met à jour la valeur stockée chaque fois que l'utilisateur change le menu
+        selectElement.addEventListener('change', () => {
+            this.selectedGroup = selectElement.value;
+            console.log(`[TopicLive+] Changement de rôle détecté. Nouveau groupe : ${this.selectedGroup}`);
+        });
+        // Lit la valeur initiale au cas où elle serait déjà sur "Modérateur"
+        this.selectedGroup = selectElement.value;
+        console.log(`[TopicLive+] Menu de modération trouvé. Groupe initial : ${this.selectedGroup}`);
+    };
+
+    // On utilise un MutationObserver car le menu peut être chargé après le script
+    const observer = new MutationObserver((mutations, obs) => {
+        const menuModo = document.querySelector(SELECTEUR_MENU_MODO);
+        if (menuModo) {
+            setupListener(menuModo);
+            obs.disconnect(); // On a trouvé le menu, on arrête de chercher
+        }
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+}
+
+
     hook() {
         const $boutonEnvoi = $('.postMessage');
         if ($boutonEnvoi.length > 0) {
@@ -531,7 +646,7 @@ class Formulaire {
         dataObject.text = message;
         dataObject.topicId = this._getTopicId();
         dataObject.forumId = this._getForumId();
-        dataObject.group = "1";
+        dataObject.group = this.selectedGroup;
         dataObject.messageId = "undefined";
         dataObject.ajax_hash = $('#ajax_hash_liste_messages').val();
 
@@ -596,7 +711,7 @@ class Formulaire {
                         text: message,
                         topicId: self._getTopicId(),
                         forumId: self._getForumId(),
-                        group: "1",
+                        group: this.selectedGroup,
                         messageId: "undefined",
                         ajax_hash: $('#ajax_hash_liste_messages').val()
                     };
@@ -746,6 +861,246 @@ class Favicon {
     }
 }
 
+// Toute la logique d'intégration des médias est contenue ici.
+
+class MediaEmbed {
+    constructor() {
+        this.twitterWidgetScriptLoaded = false;
+        // Les styles sont injectés une seule fois par TopicLive
+    }
+
+    // --- LANCEUR PRINCIPAL ---
+    processNode(node) {
+        if (!TL.options) return; // S'assurer que les options de TopicLive sont chargées
+
+        const links = $(node).find('.txt-msg a:not([data-processed])');
+
+        links.each((index, link) => {
+            const $link = $(link);
+            const href = $link.attr('href');
+            if (!href || !$link.text().trim().startsWith('http')) {
+                return;
+            }
+
+            $link.attr('data-processed', 'true');
+
+            if (TL.options.embedTiktok && href.includes('tiktok.com/')) { this.handleTikTok($link, href); }
+            else if (TL.options.embedInstagram && href.includes('instagram.com/')) { this.handleInstagram($link, href); }
+            else if (TL.options.embedYoutube && (href.includes('youtube.com/') || href.includes('youtu.be/'))) { this.handleYouTube($link, href); }
+            else if (TL.options.embedTwitter && (href.includes('twitter.com/') || href.includes('x.com/'))) { this.handleTwitter($link, href); }
+            else if (TL.options.embedWebmshare && href.includes('webmshare.com/')) { this.handleWebmshare($link, href); }
+            else if (TL.options.embedStreamable && href.includes('streamable.com/')) { this.handleStreamable($link, href); }
+            if (TL.options.embedVocaroo) {
+            if (href.includes('vocaroo.com/') || href.includes('voca.ro/')) return this.handleVocaroo($link, href);
+        }
+        });
+    }
+
+    // --- LOGIQUES D'INTÉGRATION SPÉCIFIQUES ---
+
+handleWebmshare($linkElement, url) {
+    const match = url.match(/https:\/\/webmshare\.com\/(?:play\/)?(?<id>[\w]+)/i);
+    if (!match) return;
+
+    const videoUrl = `https://s1.webmshare.com/${match.groups.id}.webm`;
+
+    const $video = $('<video>', {
+        controls: true,
+        style: "width:100%; height:auto; max-width:730px; display:block;"
+    });
+    const $source = $('<source>', {
+        src: videoUrl,
+        type: 'video/webm'
+    });
+
+    $video.append($source);
+    $linkElement.closest('p').after($video);
+}
+handleVocaroo($linkElement, url) {
+    const match = url.match(/^https:\/\/voca(?:roo\.com|\.ro)\/(?<id>.*)$/i);
+    if (!match) return;
+
+    const $iframe = $('<iframe>', {
+        width: 300,
+        height: 60,
+        frameborder: 0,
+        allow: 'autoplay',
+        src: `https://vocaroo.com/embed/${match.groups.id}?autoplay=0`
+    });
+
+    $linkElement.closest('p').after($iframe);
+}
+    embedCleanTikTokVideo($linkElement, fullUrl) {
+        const match = fullUrl.match(/\/video\/(\d+)/);
+        if (match && match[1]) {
+            const videoId = match[1];
+            const embedUrl = `https://www.tiktok.com/embed/v2/${videoId}`;
+            const $container = $('<div>', { 'class': 'jvc-embed-container tiktok-iframe-embed' });
+            const $iframe = $('<iframe>', {
+                src: embedUrl,
+                scrolling: 'no',
+                allow: 'encrypted-media; autoplay; clipboard-write;',
+                allowfullscreen: 'true'
+            });
+            $container.append($iframe);
+            $linkElement.after($container);
+        }
+    }
+
+    handleTikTok($linkElement, url) {
+        if (url.includes('vm.tiktok.com/') || url.includes('vt.tiktok.com/')) {
+            GM_xmlhttpRequest({
+                method: "HEAD",
+                url: url,
+                onload: (r) => {
+                    if (r.finalUrl && r.finalUrl.includes('/video/')) this.embedCleanTikTokVideo($linkElement, r.finalUrl);
+                }
+            });
+        } else {
+            this.embedCleanTikTokVideo($linkElement, url);
+        }
+    }
+
+    handleInstagram($linkElement, url) {
+        const vxUrl = new URL(url);
+        vxUrl.hostname = 'vxinstagram.com';
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: vxUrl.href,
+            onload: (r) => {
+                if (r.status >= 200 && r.status < 300) {
+                    const doc = new DOMParser().parseFromString(r.responseText, "text/html");
+                    const videoMeta = doc.querySelector('meta[property="og:video"]');
+                    if (videoMeta && videoMeta.content) {
+                        const $c = $('<div>', { 'class': 'jvc-embed-container instagram-native-embed' });
+                        const $v = $('<video>', { src: videoMeta.content, controls: true, loop: true });
+                        $c.append($v);
+                        $linkElement.after($c);
+                    } else {
+                        const m = url.match(/instagram\.com\/(p|reel|reels)\/([a-zA-Z0-9_-]+)/);
+                        if (m && m[2]) {
+                            const embedUrl = `https://www.instagram.com/p/${m[2]}/embed/?cr=1&v=14&wp=540&rd=https%3A%2F%2Fwww.jeuxvideo.com&rp=%2F#%7B%22ci%22%3A0%2C%22os%22%3A1%7D`;
+                            const $c = $('<div>', { 'class': 'jvc-embed-container instagram-iframe-embed' });
+                            const $i = $('<iframe>', { src: embedUrl, scrolling: 'no' }).css('height', '620px');
+                            $c.append($i);
+                            $linkElement.after($c);
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+
+
+handleYouTube($linkElement, url) {
+    const youtubeRegex = /(?:youtube\.com\/(?:watch\?v=|embed\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11}).*?(?:[?&](?:t|start)=([\w\dms]+))/;
+    const match = url.match(youtubeRegex) || url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/); // Fallback sans timestamp
+
+    if (match && match[1]) {
+        const videoId = match[1];
+        const timestamp = match[2]; // Peut être undefined si le fallback a été utilisé
+
+        let embedUrl = `https://www.youtube.com/embed/${videoId}`;
+
+        // Fonction pour convertir un timestamp (ex: "1m30s", "90s", "90") en secondes
+        const parseYoutubeTimestamp = (ts) => {
+            if (!ts) return 0;
+            if (/^\d+$/.test(ts)) return parseInt(ts, 10); // Déjà en secondes
+
+            let totalSeconds = 0;
+            const hoursMatch = ts.match(/(\d+)h/);
+            const minutesMatch = ts.match(/(\d+)m/);
+            const secondsMatch = ts.match(/(\d+)s/);
+
+            if (hoursMatch) totalSeconds += parseInt(hoursMatch[1], 10) * 3600;
+            if (minutesMatch) totalSeconds += parseInt(minutesMatch[1], 10) * 60;
+            if (secondsMatch) totalSeconds += parseInt(secondsMatch[1], 10);
+
+            // Si aucun suffixe n'est trouvé mais qu'il y a des lettres, on ignore
+            if (totalSeconds === 0 && /[a-zA-Z]/.test(ts)) return 0;
+
+            return totalSeconds;
+        };
+
+        const startSeconds = parseYoutubeTimestamp(timestamp);
+        if (startSeconds > 0) {
+            embedUrl += `?start=${startSeconds}`;
+        }
+
+        const $c = $('<div>', { 'class': 'jvc-embed-container ratio-16-9' });
+        const $i = $('<iframe>', {
+            src: embedUrl,
+            allow: 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share',
+            allowfullscreen: 'true'
+        });
+        $c.append($i);
+        $linkElement.after($c);
+    }
+}
+
+
+
+
+
+    loadTwitterWidgetScript() {
+    if (this.twitterWidgetScriptLoaded) return;
+    this.twitterWidgetScriptLoaded = true;
+    const s = document.createElement('script');
+    s.src = 'https://platform.twitter.com/widgets.js';
+    s.async = true;
+    s.charset = 'utf-8';
+    document.head.appendChild(s);
+}
+
+
+handleTwitter($linkElement, url) {
+    if ($linkElement.closest('.twitter-tweet').length) {
+        return;
+    }
+
+    const cleanUrl = url.replace(/x\.com/, 'twitter.com');
+    const $tweetElement = $('<blockquote>', {
+        'class': 'twitter-tweet',
+        'data-theme': 'dark'
+    });
+    const $linkInQuote = $('<a>', { href: cleanUrl });
+    $tweetElement.append($linkInQuote);
+
+
+    $linkElement.after($tweetElement);
+
+    if (window.twttr && window.twttr.widgets) {
+        window.twttr.widgets.load($tweetElement[0]);
+    } else {
+        this.loadTwitterWidgetScript();
+    }
+}
+
+    handleStreamable($linkElement, url) {
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: `https://api.streamable.com/oembed.json?url=${encodeURIComponent(url)}`,
+            responseType: "json",
+            onload: (r) => {
+                if (r.status === 200 && r.response && r.response.html) {
+                    const $c = $('<div>', { 'class': 'jvc-embed-container ratio-16-9' });
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = r.response.html;
+                    const iframe = tempDiv.querySelector('iframe');
+                    if (iframe) {
+                        iframe.setAttribute('referrerpolicy', 'no-referrer');
+                        $c.append(iframe);
+                        $linkElement.after($c);
+                    }
+                }
+            }
+        });
+    }
+}
+
+
+
 /**
  * Classe principale qui orchestre l'ensemble du script.
  * C'est le point d'entrée qui initialise tous les composants.
@@ -771,7 +1126,9 @@ class TopicLive {
         this.tempOptions = {};
         this.isForumPage = false;
         this.$tl_connected_counter = null;
+        this.isStandby = false;
         this.changelogContent = null;
+        this.mediaEmbed = null; // --- AJOUT : Propriété pour la classe MediaEmbed
     }
 
     /**
@@ -793,6 +1150,15 @@ class TopicLive {
         this.options.quickReplyButton = load('topiclive_quickReplyButton', true);
         this.options.counterOnTopics = load('topiclive_counterOnTopics', true);
         this.options.counterOnForums = load('topiclive_counterOnForums', true);
+
+        // --- AJOUT : Chargement des paramètres d'intégration ---
+        this.options.embedTiktok = load('topiclive_embedTiktok', true);
+        this.options.embedInstagram = load('topiclive_embedInstagram', true);
+        this.options.embedYoutube = load('topiclive_embedYoutube', true);
+        this.options.embedTwitter = load('topiclive_embedTwitter', true);
+        this.options.embedWebmshare = load('topiclive_embedWebmshare', true);
+        this.options.embedStreamable = load('topiclive_embedStreamable', true);
+        this.options.embedVocaroo = load('topiclive_embedVocaroo', true);
     }
 
     /**
@@ -907,10 +1273,69 @@ class TopicLive {
                 }
             }
 
+
             this.page.scan();
             this.loop();
         }
     }
+// Pause si JvChat utilisé
+    initOtherScriptObserver() {
+    const SELECTEUR_AUTRE_SCRIPT = '#jvchat-main';
+
+    const checkScriptStatus = () => {
+        const autreScriptEstActif = document.querySelector(SELECTEUR_AUTRE_SCRIPT) !== null;
+
+        if (autreScriptEstActif) {
+            this.standby();
+        } else {
+            this.resume();
+        }
+    };
+
+    const observer = new MutationObserver(checkScriptStatus);
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    // Vérifie une première fois au cas où le script serait déjà actif au chargement
+    checkScriptStatus();
+}
+    standby() {
+    if (this.isStandby) return; // Déjà en pause
+    console.log('[TopicLive+] Mise en veille car un autre script est actif.');
+    this.isStandby = true;
+    window.clearTimeout(this.idanalyse);
+    window.clearTimeout(this.idForumAnalyse);
+
+   
+    // On cache les éléments visuels de TopicLive+
+    if (this.$tl_button) this.$tl_button.hide();
+    if (this.$tl_forum_button) this.$tl_forum_button.hide();
+    if (this.$tl_quick_reply_button) this.$tl_quick_reply_button.hide();
+    if (this.$tl_connected_counter) this.$tl_connected_counter.hide();
+   
+}
+
+resume() {
+    if (!this.isStandby) return; // Déjà actif
+    console.log('[TopicLive+] Reprise car l\'autre script est inactif.');
+    this.isStandby = false;
+
+ 
+    // On restaure les éléments visuels en fonction des paramètres de l'utilisateur
+    this.applySettings();
+   
+
+    // On relance la boucle appropriée
+    if (this.isForumPage) {
+        this.loopForum();
+    } else {
+        this.loop();
+    }
+}
+
 
     /**
      * Crée et attache le bouton flottant principal pour les nouveaux messages.
@@ -1101,6 +1526,8 @@ class TopicLive {
         const listIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>`;
         const arrowIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>`;
         const githubIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>`;
+        const videoIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="m15.586 8.086-5.48-4.383A.5.5 0 0 0 9.5 4.06v7.88a.5.5 0 0 0 .606.457l5.48-4.383a.5.5 0 0 0 0-.914zM1.5 2A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h8A1.5 1.5 0 0 0 11 12.5v-9A1.5 1.5 0 0 0 9.5 2h-8z"/></svg>`;
+
 
         const menuHtml = `
             <div id="tl-settings-overlay" style="display: none;"></div>
@@ -1146,6 +1573,16 @@ class TopicLive {
                             <li class="tl-setting-separator">Compteur de connectés</li>
                             <li><div class="tl-setting-label"><div id="tl-sim-counter-topics" class="topiclive-floating-button tl-counter-button">14</div><span>Sur les topics</span></div><div class="tl-setting-toggle"><input type="checkbox" class="input-on-off" id="tl-setting-counter-topics"><label for="tl-setting-counter-topics" class="btn-on-off"></label></div></li>
                             <li><div class="tl-setting-label"><div id="tl-sim-counter-forums" class="topiclive-floating-button tl-counter-button">564</div><span>Sur les forums</span></div><div class="tl-setting-toggle"><input type="checkbox" class="input-on-off" id="tl-setting-counter-forums"><label for="tl-setting-counter-forums" class="btn-on-off"></label></div></li>
+
+                            <!-- AJOUT : Section pour les paramètres d'intégration -->
+                            <li class="tl-setting-separator">Intégration des médias</li>
+                            <li><div class="tl-setting-label"><span class="tl-setting-icon">${videoIcon}</span><span>TikTok</span></div><div class="tl-setting-toggle"><input type="checkbox" class="input-on-off" id="tl-setting-embed-tiktok"><label for="tl-setting-embed-tiktok" class="btn-on-off"></label></div></li>
+                            <li><div class="tl-setting-label"><span class="tl-setting-icon">${videoIcon}</span><span>Instagram</span></div><div class="tl-setting-toggle"><input type="checkbox" class="input-on-off" id="tl-setting-embed-instagram"><label for="tl-setting-embed-instagram" class="btn-on-off"></label></div></li>
+                            <li><div class="tl-setting-label"><span class="tl-setting-icon">${videoIcon}</span><span>YouTube</span></div><div class="tl-setting-toggle"><input type="checkbox" class="input-on-off" id="tl-setting-embed-youtube"><label for="tl-setting-embed-youtube" class="btn-on-off"></label></div></li>
+                            <li><div class="tl-setting-label"><span class="tl-setting-icon">${videoIcon}</span><span>Twitter/X</span></div><div class="tl-setting-toggle"><input type="checkbox" class="input-on-off" id="tl-setting-embed-twitter"><label for="tl-setting-embed-twitter" class="btn-on-off"></label></div></li>
+                            <li><div class="tl-setting-label"><span class="tl-setting-icon">${videoIcon}</span><span>Webmshare</span></div><div class="tl-setting-toggle"><input type="checkbox" class="input-on-off" id="tl-setting-embed-webmshare"><label for="tl-setting-embed-webmshare" class="btn-on-off"></label></div></li>
+                            <li><div class="tl-setting-label"><span class="tl-setting-icon">${videoIcon}</span><span>Streamable</span></div><div class="tl-setting-toggle"><input type="checkbox" class="input-on-off" id="tl-setting-embed-streamable"><label for="tl-setting-embed-streamable" class="btn-on-off"></label></div></li>
+                            <li><div class="tl-setting-label"><span class="tl-setting-icon">${videoIcon}</span><span>Vocaroo</span></div><div class="tl-setting-toggle"><input type="checkbox" class="input-on-off" id="tl-setting-embed-vocaroo"><label for="tl-setting-embed-vocaroo" class="btn-on-off"></label></div></li>
                         </ul>
 
                         <div class="tl-settings-actions">
@@ -1187,6 +1624,20 @@ class TopicLive {
                 --tl-separator-bg-dark: #444;
             }
 
+            .topiclive-deleted .conteneur-message {
+                background-color: rgba(128, 128, 128, 0.5) !important;
+                border: 1px solid rgba(128, 128, 128, 0.5);
+                border-radius: 8px;
+                opacity: 0.7; /* On peut aussi réduire l'opacité */
+            }
+
+            .bloc-pre-right {
+                flex-wrap: wrap;
+                row-gap: 0.625rem;
+                column-gap: 0.3125rem;
+                display: flex;
+            }
+
             .tl-settings-button {
                 color: white !important;
                 background: linear-gradient(90deg, rgba(0, 82, 204, 0.5), rgba(244, 128, 34, 0.5)) !important;
@@ -1196,7 +1647,11 @@ class TopicLive {
                 padding: 4px 10px !important;
                 font-size: 13px !important;
                 line-height: 1.5 !important;
-            }
+                backdrop-filter: blur(3px);
+                -webkit-backdrop-filter: blur(3px);
+
+                }
+
             .tl-settings-button:hover {
                 transform: scale(1.03);
                 filter: brightness(115%);
@@ -1329,13 +1784,25 @@ class TopicLive {
 
             .tl-settings-footer { padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--tl-border-light); flex-shrink: 0; }
             .tl-footer-link { color: #007bff; cursor: pointer; font-size: 13px; text-decoration: none; display: flex; align-items: center; gap: 5px; }
-            .tl-footer-link:hover { text-decoration: underline; }
+            .tl-footer-link:hover { text-decoration: underline; color: #ff7505 !important; }
             #tl-changelog-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; }
             #tl-changelog-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 600px; max-height: 80vh; background: #2d2d2d; color: #f0f0f0; border: 1px solid #555; border-radius: 12px; box-shadow: 0 5px 25px rgba(0,0,0,0.5); z-index: 10001; display: flex; flex-direction: column; padding: 20px; }
             #tl-changelog-modal h2 { margin-top: 0; color: #fff; border-bottom: 1px solid #555; padding-bottom: 10px; }
             #tl-changelog-content { flex-grow: 1; overflow-y: auto; white-space: pre-wrap; font-family: monospace; background: #1e1e1e; padding: 15px; border-radius: 6px; }
             #tl-changelog-close { margin-top: 20px; background-color: #6c757d; color: white; border: none; align-self: flex-end; transition: background-color 0.2s ease; }
             #tl-changelog-close:hover { background-color: #5a6268; }
+
+            /* AJOUT : Styles pour les embeds */
+            .jvc-embed-container { margin: 10px 0; border-radius: 8px; overflow: hidden; background: #000; }
+            .jvc-embed-container.ratio-16-9 { position: relative; padding-bottom: 56.25%; height: 0; max-width: 640px; }
+            .jvc-embed-container.ratio-16-9 iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+            .jvc-embed-container.tiktok-iframe-embed { max-width: 340px; height: 600px; }
+            .jvc-embed-container.instagram-native-embed { max-width: 420px; }
+            .jvc-embed-container.instagram-iframe-embed { max-width: 540px; }
+            .jvc-embed-container.webmshare-native-embed { max-width: 300px; }
+            .jvc-embed-container.twitter-oembed-embed { background: transparent !important; }
+
+
             `;
 
         $('head').append(`<style>${menuCss}</style>`);
@@ -1429,6 +1896,15 @@ class TopicLive {
         $('#tl-setting-counter-topics').prop('checked', this.tempOptions.counterOnTopics);
         $('#tl-setting-counter-forums').prop('checked', this.tempOptions.counterOnForums);
 
+        // --- AJOUT : Remplissage des paramètres d'intégration ---
+        $('#tl-setting-embed-tiktok').prop('checked', this.tempOptions.embedTiktok);
+        $('#tl-setting-embed-instagram').prop('checked', this.tempOptions.embedInstagram);
+        $('#tl-setting-embed-youtube').prop('checked', this.tempOptions.embedYoutube);
+        $('#tl-setting-embed-twitter').prop('checked', this.tempOptions.embedTwitter);
+        $('#tl-setting-embed-webmshare').prop('checked', this.tempOptions.embedWebmshare);
+        $('#tl-setting-embed-streamable').prop('checked', this.tempOptions.embedStreamable);
+        $('#tl-setting-embed-vocaroo').prop('checked', this.tempOptions.embedVocaroo);
+
         const isDarkMode = localStorage.getItem('topiclive_dark_mode') === 'true';
         $('#tl-setting-dark-mode').prop('checked', isDarkMode);
         this.$tl_settings_modal.toggleClass('tl-dark-mode', isDarkMode);
@@ -1454,42 +1930,24 @@ class TopicLive {
      * Attache les écouteurs d'événements aux cases à cocher du menu.
      */
     attachSettingsListeners() {
-        $('#tl-setting-sound').off('change').on('change', (e) => {
-            this.tempOptions.sound = $(e.target).is(':checked');
-            this.updateSimulatedButtons();
-        });
-        $('#tl-setting-favicon').off('change').on('change', (e) => {
-            this.tempOptions.favicon = $(e.target).is(':checked');
-            this.updateSimulatedButtons();
-        });
-        $('#tl-setting-new-messages').off('change').on('change', (e) => {
-            this.tempOptions.newMessagesButton = $(e.target).is(':checked');
-            this.updateSimulatedButtons();
-        });
-        $('#tl-setting-show-counter').off('change').on('change', (e) => {
-            this.tempOptions.showCounterOnButton = $(e.target).is(':checked');
-            this.updateSimulatedButtons();
-        });
-        $('#tl-setting-quick-reply').off('change').on('change', (e) => {
-            this.tempOptions.quickReplyButton = $(e.target).is(':checked');
-            this.updateSimulatedButtons();
-        });
-        $('#tl-setting-list').off('change').on('change', (e) => {
-            this.tempOptions.listButton = $(e.target).is(':checked');
-            this.updateSimulatedButtons();
-        });
-        $('#tl-setting-list-swipe').off('change').on('change', (e) => {
-            this.tempOptions.listButtonSwipe = $(e.target).is(':checked');
-            this.updateSimulatedButtons();
-        });
-        $('#tl-setting-counter-topics').off('change').on('change', (e) => {
-            this.tempOptions.counterOnTopics = $(e.target).is(':checked');
-            this.updateSimulatedButtons();
-        });
-        $('#tl-setting-counter-forums').off('change').on('change', (e) => {
-            this.tempOptions.counterOnForums = $(e.target).is(':checked');
-            this.updateSimulatedButtons();
-        });
+        $('#tl-setting-sound').off('change').on('change', (e) => { this.tempOptions.sound = $(e.target).is(':checked'); this.updateSimulatedButtons(); });
+        $('#tl-setting-favicon').off('change').on('change', (e) => { this.tempOptions.favicon = $(e.target).is(':checked'); this.updateSimulatedButtons(); });
+        $('#tl-setting-new-messages').off('change').on('change', (e) => { this.tempOptions.newMessagesButton = $(e.target).is(':checked'); this.updateSimulatedButtons(); });
+        $('#tl-setting-show-counter').off('change').on('change', (e) => { this.tempOptions.showCounterOnButton = $(e.target).is(':checked'); this.updateSimulatedButtons(); });
+        $('#tl-setting-quick-reply').off('change').on('change', (e) => { this.tempOptions.quickReplyButton = $(e.target).is(':checked'); this.updateSimulatedButtons(); });
+        $('#tl-setting-list').off('change').on('change', (e) => { this.tempOptions.listButton = $(e.target).is(':checked'); this.updateSimulatedButtons(); });
+        $('#tl-setting-list-swipe').off('change').on('change', (e) => { this.tempOptions.listButtonSwipe = $(e.target).is(':checked'); this.updateSimulatedButtons(); });
+        $('#tl-setting-counter-topics').off('change').on('change', (e) => { this.tempOptions.counterOnTopics = $(e.target).is(':checked'); this.updateSimulatedButtons(); });
+        $('#tl-setting-counter-forums').off('change').on('change', (e) => { this.tempOptions.counterOnForums = $(e.target).is(':checked'); this.updateSimulatedButtons(); });
+
+        // --- AJOUT : Écouteurs pour les paramètres d'intégration ---
+        $('#tl-setting-embed-tiktok').off('change').on('change', (e) => { this.tempOptions.embedTiktok = $(e.target).is(':checked'); });
+        $('#tl-setting-embed-instagram').off('change').on('change', (e) => { this.tempOptions.embedInstagram = $(e.target).is(':checked'); });
+        $('#tl-setting-embed-youtube').off('change').on('change', (e) => { this.tempOptions.embedYoutube = $(e.target).is(':checked'); });
+        $('#tl-setting-embed-twitter').off('change').on('change', (e) => { this.tempOptions.embedTwitter = $(e.target).is(':checked'); });
+        $('#tl-setting-embed-webmshare').off('change').on('change', (e) => { this.tempOptions.embedWebmshare = $(e.target).is(':checked'); });
+        $('#tl-setting-embed-streamable').off('change').on('change', (e) => { this.tempOptions.embedStreamable = $(e.target).is(':checked'); });
+        $('#tl-setting-embed-vocaroo').off('change').on('change', (e) => { this.tempOptions.embedVocaroo = $(e.target).is(':checked'); });
     }
 
     /**
@@ -1499,7 +1957,9 @@ class TopicLive {
         this.options = { ...this.tempOptions
         };
         Object.keys(this.options).forEach(key => {
-            localStorage.setItem(`topiclive_${key}`, this.options[key]);
+            // Le préfixe est différent pour les options d'intégration pour correspondre à la fonction `load`
+            const prefix = key.startsWith('embed') ? 'topiclive_' : 'topiclive_';
+            localStorage.setItem(`${prefix}${key}`, this.options[key]);
         });
         this.applySettings();
     }
@@ -1670,7 +2130,7 @@ class TopicLive {
     updateDesktopButtonPosition() {
         if (!this.$tl_button || !this.$tl_forum_button || !this.$tl_connected_counter || !this.$tl_quick_reply_button) return;
 
-        const isMobileView = $(window).width() < 1250;
+        const isMobileView = $(window).width() < 985; //largeur mobile = 567px
         const scrollButtonBottom = isMobileView ? 20 : 25;
         const listButtonBottom = scrollButtonBottom + 35 + 8;
         const replyButtonBottom = listButtonBottom + 35 + 8;
@@ -1702,9 +2162,9 @@ class TopicLive {
      * Gère l'affichage/masquage du bouton en fonction des options utilisateur.
      */
     updateCounters() {
-        if (this.isForumPage) {
-            return;
-        }
+       if (this.isStandby || this.isForumPage) {
+        return;
+    }
 
         if (this.isBlocked) {
             const $counter = this.$tl_button.find('.topiclive-counter');
@@ -1778,6 +2238,7 @@ class TopicLive {
      * C'est la première fonction appelée au démarrage.
      */
     initStatic() {
+        this.mediaEmbed = new MediaEmbed(); // Instanciation de MediaEmbed ---
         this.favicon = new Favicon();
         this.son = new Audio('https://github.com/moyaona/TopicLivePlus/raw/refs/heads/main/notification_sound_tl.mp3');
         this.suivreOnglets();
@@ -1787,6 +2248,7 @@ class TopicLive {
         this.initConnectedCounter();
         this.initPartialQuoteSystem();
         this.initSettingsMenu();
+        this.initOtherScriptObserver();
         this.init();
 
         addEventListener('instantclick:newpage', this.init.bind(this));
@@ -1815,7 +2277,7 @@ class TopicLive {
     }
 
     loop() {
-        if (this.isBlocked || this.is410) return;
+        if (this.isStandby || this.isBlocked || this.is410) return;
         if (typeof this.idanalyse !== 'undefined') window.clearTimeout(this.idanalyse);
         let duree = this.ongletActif ? 5000 : 10000;
         this.oldInstance = this.instance;
@@ -1828,12 +2290,21 @@ class TopicLive {
         const numPage = page.trouver(`${this.class_num_page}:first`).text();
         const testUrl = this.url.split('-');
         if ($bouton.length > 0) {
-            this.messages = [];
-            if ($bouton.prop('tagName') == 'A') {
-                this.url = $bouton.attr('href');
-            } else {
-                this.url = this.jvCake($bouton.attr('class'));
-            }
+    let nouvelleUrl;
+    if ($bouton.prop('tagName') == 'A') {
+        nouvelleUrl = $bouton.attr('href');
+    } else {
+        nouvelleUrl = this.jvCake($bouton.attr('class'));
+    }
+
+    // On vérifie si l'URL a VRAIMENT changé avant de vider la mémoire // Corrige duplication du topic
+    if (nouvelleUrl !== this.url) {
+        this.messages = [];
+        this.url = nouvelleUrl;
+    }
+
+
+
         } else if (testUrl[3] != numPage) {
             this.messages = [];
             testUrl[3] = numPage;
@@ -1884,7 +2355,7 @@ class TopicLive {
         $('body').prepend($banner);
 
         const positionBanner = () => {
-            if ($(window).width() < 1250) {
+            if ($(window).width() < 567) {
                 $banner.css({ 'left': '50%', 'transform': 'translate(-50%, -50%)' });
             } else {
                 const $container = $('.conteneur-messages-pagi');
@@ -1948,7 +2419,7 @@ class TopicLive {
             $('body').prepend($banner);
 
             const positionBanner = () => {
-                if ($(window).width() < 1250) {
+                if ($(window).width() < 567) {
                     $banner.css({ 'left': '50%', 'transform': 'translate(-50%, -50%)' });
                 } else {
                     const $container = $('.conteneur-messages-pagi, .conteneur-topic-pagi');
@@ -2007,6 +2478,7 @@ class TopicLive {
     }
 
     loopForum() {
+        if (this.isStandby) return;
         if (typeof this.idForumAnalyse !== 'undefined') window.clearTimeout(this.idForumAnalyse);
         let duree = this.ongletActif ? 15000 : 30000;
         this.oldInstance = this.instance;
