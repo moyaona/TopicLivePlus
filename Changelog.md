@@ -1,6 +1,7 @@
 ### Changelog TopicLive+
 
 ## 8.1 / 23/09/2025
+- Intégration des médias (Youtube, Instagram, Twitter/X, Tiktok, Streamable, Webmshare)
 - Fix citations imbriquées des messages édités
 - Fix position du bouton menu
 - Correction des couleurs de fond des messages alternées après 100 messages sur la page
