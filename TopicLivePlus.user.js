@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TopicLive+
 // @namespace     TopicLive+JVC
-// @description   Charge les nouveaux messages d'un topic JVC en direct.
+// @description   Affiche les nouveaux messages d'un topic en direct.
 // @author        moyaona, lantea/atlantis, kiwec
 // @match         https://www.jeuxvideo.com/forums/*
 // @downloadURL   https://github.com/moyaona/TopicLivePlus/raw/refs/heads/main/TopicLivePlus.user.js
@@ -9,7 +9,7 @@
 // @run-at        document-end
 // @require       https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js
 // @icon          https://image.noelshack.com/fichiers/2025/35/4/1756403430-image.png
-// @version       8.1
+// @version       8.2
 // @grant         GM_xmlhttpRequest
 // @connect       raw.githubusercontent.com
 // @connect       tiktok.com
@@ -21,8 +21,6 @@
 // @connect       api.fxtwitter.com
 // @noframes
 // ==/UserScript==
-
-
 
 
 /**
@@ -994,8 +992,8 @@ handleVocaroo($linkElement, url) {
 
 
 handleYouTube($linkElement, url) {
-    const youtubeRegex = /(?:youtube\.com\/(?:watch\?v=|embed\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11}).*?(?:[?&](?:t|start)=([\w\dms]+))/;
-    const match = url.match(youtubeRegex) || url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/); // Fallback sans timestamp
+    const youtubeRegex = /(?:youtube\.com\/(?:watch\?v=|embed\/|live\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11}).*?(?:[?&](?:t|start)=([\w\dms]+))/;
+    const match = url.match(youtubeRegex) || url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|live\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/); // Fallback sans timestamp
 
     if (match && match[1]) {
         const videoId = match[1];
@@ -1107,6 +1105,7 @@ handleTwitter($linkElement, url) {
  */
 class TopicLive {
     constructor() {
+        this.isLoading = false;
         this.instance = 0;
         this.ongletActif = !document.hidden;
         this.unreadMessageAnchors = [];
@@ -1792,18 +1791,47 @@ resume() {
             #tl-changelog-close { margin-top: 20px; background-color: #6c757d; color: white; border: none; align-self: flex-end; transition: background-color 0.2s ease; }
             #tl-changelog-close:hover { background-color: #5a6268; }
 
-            /* AJOUT : Styles pour les embeds */
-            .jvc-embed-container { margin: 10px 0; border-radius: 8px; overflow: hidden; background: #000; }
-            .jvc-embed-container.ratio-16-9 { position: relative; padding-bottom: 56.25%; height: 0; max-width: 640px; }
-            .jvc-embed-container.ratio-16-9 iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-            .jvc-embed-container.tiktok-iframe-embed { max-width: 340px; height: 600px; }
-            .jvc-embed-container.instagram-native-embed { max-width: 420px; }
-            .jvc-embed-container.instagram-iframe-embed { max-width: 540px; }
-            .jvc-embed-container.webmshare-native-embed { max-width: 300px; }
-            .jvc-embed-container.twitter-oembed-embed { background: transparent !important; }
+           /* Styles pour les embeds */
+.jvc-embed-container {
+    margin: 10px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+}
 
+/* Règle pour les embeds à ratio (YouTube, Streamable, etc.) */
+.jvc-embed-container.ratio-16-9 {
+    position: relative;
+    padding-bottom: 56.25%; /* Ratio 16:9 */
+    height: 0;
+    max-width: 640px;
+}
+.jvc-embed-container.ratio-16-9 iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
 
-            `;
+/* Règle SPÉCIFIQUE et ISOLÉE pour TikTok */
+.jvc-embed-container.tiktok-iframe-embed {
+    max-width: 340px;
+    margin-left: auto;
+    margin-right: auto;
+}
+.jvc-embed-container.tiktok-iframe-embed iframe {
+    width: 100%;
+    height: 760px;
+    border: none;
+    display: block;
+}
+
+/* Autres règles pour les autres embeds (qui ne sont PAS affectées) */
+.jvc-embed-container.instagram-native-embed { max-width: 420px; }
+.jvc-embed-container.instagram-iframe-embed { max-width: 540px; }
+.jvc-embed-container.webmshare-native-embed { max-width: 300px; }
+.jvc-embed-container.twitter-oembed-embed { background: transparent !important; }`;
 
         $('head').append(`<style>${menuCss}</style>`);
         $('body').append(menuHtml);
@@ -2442,6 +2470,11 @@ resume() {
     }
 
     GET(cb) {
+        if (this.isLoading) { // Si un chargement est déjà en cours, on sort.
+        return;
+    }
+    this.isLoading = true; // On verrouille.
+
         const blocChargement = $('#bloc-formulaire-forum .titre-bloc');
         blocChargement.addClass('topiclive-loading');
         window.clearTimeout(this.idanalyse);
@@ -2473,7 +2506,10 @@ resume() {
                     return;
                 }
                 TL.loop();
-            }
+            },
+             complete: () => { // <-- On ajoute ce bloc
+            this.isLoading = false; // On déverrouille à la fin de la requête.
+             }
         });
     }
 
@@ -2486,9 +2522,13 @@ resume() {
     }
 
     chargerForum() {
+         if (this.isLoading) { // <-- Ajouter la vérification
+        return;
+    }
         if (this.oldInstance != this.instance) {
             return;
         }
+        this.isLoading = true; // <-- Ajouter le verrouillage
         $.ajax({
             type: 'GET',
             url: this.url,
@@ -2500,7 +2540,10 @@ resume() {
             },
             error: () => {
                 if (this.oldInstance == this.instance) this.loopForum();
-            }
+            },
+            complete: () => { // <-- Ajouter pour déverrouiller
+            this.isLoading = false;
+        }
         });
     }
 
