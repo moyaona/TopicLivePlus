@@ -1,5 +1,10 @@
 ### Changelog TopicLive+
 
+## 8.2 / 29/10/2025
+- Fix duplication du topic/affichage des messages comme supprimés (hiérarchie des requêtes)
+- Fix intégrations Tiktok (ratio vidéos)
+- Ajout intégrations Youtube shorts
+
 ## 8.1 / 23/09/2025
 - Intégration des médias (Youtube, Instagram, Twitter/X, Tiktok, Streamable, Webmshare, Vocaroo)
 - Fix citations imbriquées des messages édités
